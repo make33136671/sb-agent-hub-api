@@ -31,11 +31,19 @@ namespace SbAgentHub.Core.Expand
         }
 
         /// <summary>
-        /// 登录人的角色类型
+        /// 用户类型: Admin / Member
         /// </summary>
-        public static string UserRole(this ClaimsPrincipal claims)
+        public static string UserType(this ClaimsPrincipal claims)
         {
-            return claims?.FindFirst("UserRole")?.Value ?? "";
+            return claims?.FindFirst("UserType")?.Value ?? "";
+        }
+
+        /// <summary>
+        /// Member 角色: Owner / Agent
+        /// </summary>
+        public static string Role(this ClaimsPrincipal claims)
+        {
+            return claims?.FindFirst("Role")?.Value ?? "";
         }
     }
 }

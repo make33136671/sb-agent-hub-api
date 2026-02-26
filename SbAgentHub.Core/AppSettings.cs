@@ -18,14 +18,14 @@
         public bool Debug { get; set; } = false;
 
         /// <summary>
-        /// 运行后台任务
-        /// </summary>
-        public bool RunBackgroundService { get; set; } = false;
-
-        /// <summary>
         /// 开启Swagger
         /// </summary>
         public bool UseSwagger { get; set; } = false;
+
+        /// <summary>
+        /// OpenIM 配置
+        /// </summary>
+        public OpenIMConfig OpenIM { get; set; } = new();
 
 
         /// <summary>
@@ -260,4 +260,24 @@
         public string InstanceName { get; set; } = "SB:";
     }
 
+    /// <summary>
+    /// OpenIM 配置
+    /// </summary>
+    public class OpenIMConfig
+    {
+        /// <summary>
+        /// OpenIM Server API 地址
+        /// </summary>
+        public string ApiUrl { get; set; } = "";
+
+        /// <summary>
+        /// 管理员用户ID
+        /// </summary>
+        public string AdminUserId { get; set; } = "imAdmin";
+
+        /// <summary>
+        /// API 密钥
+        /// </summary>
+        public string Secret { get; set; } = "";
+    }
 }

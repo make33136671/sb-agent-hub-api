@@ -50,12 +50,14 @@ namespace SbAgentHub.API.Extensions
                 }
             };
 
-            // 全局软删除过滤：自动为所有 ISoftDelete 实体过滤已删除记录
+            // 全局软删除过滤
             fsql.GlobalFilter.Apply<Admin>("IsDeleted", a => a.IsDeleted == false);
             fsql.GlobalFilter.Apply<Menu>("IsDeleted", a => a.IsDeleted == false);
             fsql.GlobalFilter.Apply<AdminRole>("IsDeleted", a => a.IsDeleted == false);
             fsql.GlobalFilter.Apply<Member>("IsDeleted", a => a.IsDeleted == false);
-            Log.Information("已应用全局软删除过滤，IsDeleted=true 的数据将被自动排除");
+            fsql.GlobalFilter.Apply<ChatUser>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<ChatPlatform>("IsDeleted", a => a.IsDeleted == false);
+            Log.Information("已应用全局软删除过滤");
 
             fsql.UseJsonMap();
 
