@@ -171,7 +171,7 @@ namespace SbAgentHub.Services
                     UserType = "Member",
                     Role = member.Role.ToString(),
                     member.OwnerId,
-                    homePath = member.Role == MemberRole.Agent ? "/workbench/index" : "/dashboard/index"
+                    homePath = "/workbench/index"
                 }
             });
         }
@@ -232,7 +232,7 @@ namespace SbAgentHub.Services
                     member.OwnerId,
                     member.OnlineStatus,
                     member.OpenImUserId,
-                    homePath = member.Role == MemberRole.Agent ? "/workbench/index" : "/dashboard/index"
+                    homePath = "/workbench/index"
                 });
             }
 
