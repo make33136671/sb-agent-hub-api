@@ -1,0 +1,21 @@
+obj/
+bin/
+Debug/
+Release/
+logs/
+logs
+upload/
+upload
+.vs/
+/.vs
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# OS
+Thumbs.db
+
+# Setup
+installed.lock

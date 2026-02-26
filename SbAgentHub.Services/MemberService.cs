@@ -1,0 +1,120 @@
+using Microsoft.Extensions.Logging;
+using SbAgentHub.Core.Attribute;
+using SbAgentHub.Core.Util;
+using SbAgentHub.Models;
+
+namespace SbAgentHub.Services
+{
+    [AutoDependencyInjection]
+    public class MemberService : BaseCrudService<Member>
+    {
+        IFreeSql _fsql;
+
+        public MemberService(IFreeSql fsql, ILogger<MemberService> logger) : base(fsql, logger)
+        {
+            _fsql = fsql;
+        }
+
+        public Member GetMemberById(int memberId)
+        {
+            return Select.Where(c => c.Id == memberId).First();
+        }
+
+        public ResultData GetList(int? id = null, string? keyword = null, UserStatus? status = null,
+            MemberRole? role = null, int? ownerId = null,
+            string field = "", string order = "", int page = 1, int pageSize = 20)
+        {
+            var query = Select;
+            query = query.WhereIf(id.HasValue, c => c.Id == id);
+            query = query.WhereIf(!string.IsNullOrEmpty(keyword),
+                c => c.Username.Contains(keyword!) || c.Name.Contains(keyword!));
+            query = query.WhereIf(status.HasValue, c => c.Status == status!.Value);
+            query = query.WhereIf(role.HasValue, c => c.Role == role!.Value);
+            query = query.WhereIf(ownerId.HasValue, c => c.OwnerId == ownerId!.Value);
+            query = ApplySorting(query, field, order);
+
+            var data = query.Count(out long dataCount).Page(page, pageSize).ToList(m => new
+            {
+                m.Id, m.Username, m.Name, m.Avatar, m.Role, m.OwnerId,
+                m.OnlineStatus, m.MaxConcurrent, m.CurrentCount,
+                m.Status, m.CreatedTime, m.LastOnlineTime
+            });
+
+            return ResultPage.Ok(data, dataCount, page, pageSize, "数据查询成功");
+        }
+
+        /// <summary>
+        /// 获取站长下属的客服列表
+        /// </summary>
+        public ResultData GetAgentsByOwner(int ownerId)
+        {
+            var agents = Select.Where(c => c.OwnerId == ownerId && c.Role == MemberRole.Agent)
+                .ToList(c => new
+                {
+                    c.Id, c.Username, c.Name, c.Avatar,
+                    c.OnlineStatus, c.MaxConcurrent, c.CurrentCount,
+                    c.Status, c.CreatedTime, c.LastOnlineTime
+                });
+
+            return ResultData.Ok(agents);
+        }
+
+        public ResultData Create(Member member)
+        {
+            var existing = Select.Where(c => c.Username == member.Username).First();
+            if (existing != null)
+                return ResultData.No($"用户名 {member.Username} 已存在");
+
+            if (!string.IsNullOrEmpty(member.Password))
+                member.Password = PasswordUtil.EncryptPassword(member.Password);
+
+            member.CreatedTime = DateTime.Now;
+            member = Insert(member);
+            return ResultData.Ok("创建成功", member);
+        }
+
+        public ResultData Edit(Member member)
+        {
+            var existing = Select.Where(c => c.Id == member.Id).First();
+            if (existing == null)
+                return ResultData.No("用户不存在");
+
+            existing.Name = member.Name;
+            existing.Avatar = member.Avatar;
+            existing.Status = member.Status;
+            existing.MaxConcurrent = member.MaxConcurrent;
+            existing.WelcomeMessage = member.WelcomeMessage;
+
+            Update(existing);
+            return ResultData.Ok("更新成功");
+        }
+
+        /// <summary>
+        /// 重置登录密码
+        /// </summary>
+        public ResultData ResetPassword(int id, string newPassword)
+        {
+            var member = Select.Where(c => c.Id == id).First();
+            if (member == null)
+                return ResultData.No("用户不存在");
+
+            member.Password = PasswordUtil.EncryptPassword(newPassword);
+            UpdateDiy.UpdateColumns(c => c.Password).SetSource(member).ExecuteAffrows();
+            return ResultData.Ok("密码已重置");
+        }
+
+        /// <summary>
+        /// 切换状态
+        /// </summary>
+        public ResultData ToggleStatus(int id)
+        {
+            var member = Select.Where(c => c.Id == id).First();
+            if (member == null)
+                return ResultData.No("用户不存在");
+
+            member.Status = member.Status == UserStatus.Active ? UserStatus.Banned : UserStatus.Active;
+            UpdateDiy.UpdateColumns(c => c.Status).SetSource(member).ExecuteAffrows();
+            return ResultData.Ok("状态切换成功", new { member.Status });
+        }
+    }
+}
