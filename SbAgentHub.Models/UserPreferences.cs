@@ -7,7 +7,7 @@ namespace SbAgentHub.Models
     /// 用户偏好设置
     /// </summary>
     [Table(Name = "SB_UserPreferences")]
-    public class UserPreferences
+    public class UserPreferences : IEntity, ISoftDelete
     {
         [Column(Name = "Id", IsPrimary = true, IsIdentity = true)]
         public int Id { get; set; }
@@ -31,12 +31,6 @@ namespace SbAgentHub.Models
         public bool SoundEnabled { get; set; } = true;
 
         /// <summary>
-        /// 提示音类型
-        /// </summary>
-        [Column(Name = "SoundType", StringLength = 50)]
-        public string SoundType { get; set; } = "default";
-
-        /// <summary>
         /// 提示音音量 (0-100)
         /// </summary>
         [Column(Name = "SoundVolume")]
@@ -49,15 +43,27 @@ namespace SbAgentHub.Models
         public bool DesktopNotification { get; set; } = true;
 
         /// <summary>
-        /// 创建时间
+        /// 自动回复
         /// </summary>
-        [Column(Name = "CreateTime", DbType = "timestamp", InsertValueSql = "now()")]
-        public DateTime CreateTime { get; set; }
+        [Column(Name = "AutoReply")]
+        public bool AutoReply { get; set; } = false;
 
         /// <summary>
-        /// 更新时间
+        /// 自动回复消息
         /// </summary>
-        [Column(Name = "UpdateTime", DbType = "timestamp")]
-        public DateTime? UpdateTime { get; set; }
+        [Column(Name = "AutoReplyMessage", StringLength = 500, IsNullable = true)]
+        public string AutoReplyMessage { get; set; }
+
+        /// <summary>
+        /// 创建时间
+        /// </summary>
+        [Column(Name = "CreatedTime", DbType = "timestamp", InsertValueSql = "now()", CanUpdate = false)]
+        public DateTime CreatedTime { get; set; }
+
+        /// <summary>
+        /// 软删除标记
+        /// </summary>
+        [Column(Name = "IsDeleted", IsNullable = false, InsertValueSql = "0")]
+        public bool IsDeleted { get; set; }
     }
 }

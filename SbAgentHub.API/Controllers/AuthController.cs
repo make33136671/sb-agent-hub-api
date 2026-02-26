@@ -7,68 +7,83 @@ using SbAgentHub.Models;
 namespace SbAgentHub.API.Controllers;
 
 /// <summary>
-/// 认证与账户管理
+/// 认证与账户管理（Admin + Member 共用）
 /// </summary>
 [ApiController,
     Authorize(AuthenticationSchemes = "JwtAdmin"),
     Route("[controller]/[action]")]
 public class AuthController : Controller
 {
-    private readonly ILogger<AuthController> _logger;
-    public IHttpContextAccessor _httpContextAccessor;
-    public AdminService _adminService;
-    public FileUploadService _fileUploadService;
-    public AuthController(ILogger<AuthController> logger, IHttpContextAccessor httpContextAccessor, AdminService adminService, FileUploadService fileUploadService)
+    private readonly AuthService _authService;
+    private readonly FileUploadService _fileUploadService;
+    private readonly ChatAuthService _chatAuthService;
+
+    public AuthController(AuthService authService, FileUploadService fileUploadService, ChatAuthService chatAuthService)
     {
-        _logger = logger;
-        _httpContextAccessor = httpContextAccessor;
-        _adminService = adminService;
+        _authService = authService;
         _fileUploadService = fileUploadService;
+        _chatAuthService = chatAuthService;
     }
 
     /// <summary>
-    /// 登录管理系统
+    /// 统一登录（Admin / Member）
     /// </summary>
     [HttpPost(Name = "Login"), AllowAnonymous, EnableRateLimiting("login")]
-    public async Task<ResultData> Login([FromForm] string username, [FromForm] string password) => await _adminService.LoginAsync(username, password);
+    public async Task<ResultData> Login([FromForm] string username, [FromForm] string password)
+        => await _authService.UnifiedLoginAsync(username, password);
 
     /// <summary>
-    /// 获取当前登录的管理员信息
+    /// 获取当前登录用户信息
     /// </summary>
     [HttpGet(Name = "GetInfo")]
-    public async Task<ResultData> GetInfo() => await _adminService.GetInfoAsync();
+    public async Task<ResultData> GetInfo()
+        => await _authService.GetInfoAsync();
 
     /// <summary>
-    /// 退出管理系统
+    /// 获取当前用户权限菜单
+    /// </summary>
+    [HttpGet]
+    public ResultData MenuAll()
+        => _authService.GetMenus();
+
+    /// <summary>
+    /// 退出登录
     /// </summary>
     [HttpPost, AllowAnonymous]
-    public IActionResult Logout()
-    {
-        return Content("2");
-    }
+    public IActionResult Logout() => Content("2");
 
     /// <summary>
     /// 修改密码
     /// </summary>
     [HttpPost]
-    public ResultData ChangePassword([FromForm] string oldPassword, [FromForm] string newPassword) => _adminService.ChangePassword(oldPassword, newPassword);
+    public ResultData ChangePassword([FromForm] string oldPassword, [FromForm] string newPassword)
+        => _authService.ChangePassword(oldPassword, newPassword);
 
     /// <summary>
     /// 修改头像
     /// </summary>
     [HttpPost]
-    public async Task<ResultData> ChangeAvatar([FromForm] string avatar) => await _adminService.ChangeAvatarAsync(avatar);
+    public ResultData ChangeAvatar([FromForm] string avatar)
+        => _authService.ChangeAvatar(avatar);
 
     /// <summary>
     /// 修改个人资料
     /// </summary>
     [HttpPost]
-    public async Task<ResultData> UpdateProfile([FromForm] string name) => await _adminService.UpdateProfileAsync(name);
+    public ResultData UpdateProfile([FromForm] string name)
+        => _authService.UpdateProfile(name);
+
+    /// <summary>
+    /// 获取客服 OpenIM Token（Member 调用）
+    /// </summary>
+    [HttpGet]
+    public async Task<ResultData> GetAgentImToken(int memberId)
+        => await _chatAuthService.GetAgentImTokenAsync(memberId);
 
     /// <summary>
     /// 上传文件
     /// </summary>
-    [HttpPost]
-    [AllowAnonymous]
-    public ResultData Upload(IFormFile file) => _fileUploadService.Upload(file);
+    [HttpPost, AllowAnonymous]
+    public ResultData Upload(IFormFile file)
+        => _fileUploadService.Upload(file);
 }

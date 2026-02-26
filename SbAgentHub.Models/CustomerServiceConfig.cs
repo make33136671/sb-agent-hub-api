@@ -7,7 +7,7 @@ namespace SbAgentHub.Models
     /// 客服分配配置
     /// </summary>
     [Table(Name = "SB_CustomerServiceConfig")]
-    public class CustomerServiceConfig
+    public class CustomerServiceConfig : IEntity, ISoftDelete
     {
         [Column(Name = "Id", IsPrimary = true, IsIdentity = true)]
         public int Id { get; set; }
@@ -71,5 +71,11 @@ namespace SbAgentHub.Models
         /// </summary>
         [Column(Name = "UpdateTime", DbType = "timestamp")]
         public DateTime? UpdateTime { get; set; }
+
+        /// <summary>
+        /// 软删除标记
+        /// </summary>
+        [Column(Name = "IsDeleted", IsNullable = false, InsertValueSql = "0")]
+        public bool IsDeleted { get; set; }
     }
 }

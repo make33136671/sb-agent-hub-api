@@ -1,10 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
-using Newtonsoft.Json.Linq;
 using SbAgentHub.Services;
 using SbAgentHub.Models;
-using Microsoft.AspNetCore.Http;
-
 
 namespace SbAgentHub.API.Controllers;
 
@@ -16,26 +13,21 @@ namespace SbAgentHub.API.Controllers;
     Route("[controller]/[action]")]
 public class MenuController : Controller
 {
-    private readonly ILogger<MenuController> _logger;
-    public IHttpContextAccessor _httpContextAccessor;
-    public AdminService _adminService;
     private readonly MenuService _menuService;
-    public MenuController(ILogger<MenuController> logger, IHttpContextAccessor httpContextAccessor, AdminService adminService, MenuService menuService)
-    {
-        _logger = logger;
-        _httpContextAccessor = httpContextAccessor;
-        _adminService = adminService;
-        _menuService = menuService;
-    }
+    private readonly AuthService _authService;
 
+    public MenuController(MenuService menuService, AuthService authService)
+    {
+        _menuService = menuService;
+        _authService = authService;
+    }
 
     #region 身份认证
     /// <summary>
-    /// 获取当前登录的管理员的权限菜单
+    /// 获取当前登录用户的权限菜单（Admin / Member）
     /// </summary>
     [HttpGet(Name = "All")]
-    public object All() => _adminService.MenuAll();
-
+    public ResultData All() => _authService.GetMenus();
 
     #endregion
 

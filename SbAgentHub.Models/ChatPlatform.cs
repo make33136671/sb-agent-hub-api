@@ -7,10 +7,10 @@ namespace SbAgentHub.Models
     /// 接入平台
     /// </summary>
     [Table(Name = "SB_ChatPlatform")]
-    public class ChatPlatform
+    public class ChatPlatform : IEntity, ISoftDelete
     {
         [Column(Name = "Id", IsPrimary = true, IsIdentity = true)]
-        public long Id { get; set; }
+        public int Id { get; set; }
 
         /// <summary>
         /// 所属站长Id

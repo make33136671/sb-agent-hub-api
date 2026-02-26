@@ -57,6 +57,10 @@ namespace SbAgentHub.API.Extensions
             fsql.GlobalFilter.Apply<Member>("IsDeleted", a => a.IsDeleted == false);
             fsql.GlobalFilter.Apply<ChatUser>("IsDeleted", a => a.IsDeleted == false);
             fsql.GlobalFilter.Apply<ChatPlatform>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<CustomerServiceConfig>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<ChatUserLoginRecord>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<ClientErrorLog>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<UserPreferences>("IsDeleted", a => a.IsDeleted == false);
             Log.Information("已应用全局软删除过滤");
 
             fsql.UseJsonMap();

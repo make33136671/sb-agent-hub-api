@@ -7,10 +7,10 @@ namespace SbAgentHub.Models
     /// 聊天用户（Widget 端用户）
     /// </summary>
     [Table(Name = "SB_ChatUser")]
-    public class ChatUser
+    public class ChatUser : IEntity, ISoftDelete
     {
         [Column(Name = "Id", IsPrimary = true, IsIdentity = true)]
-        public long Id { get; set; }
+        public int Id { get; set; }
 
         /// <summary>
         /// 聊天用户唯一标识（用于 OpenIM userID）
@@ -28,7 +28,7 @@ namespace SbAgentHub.Models
         /// 所属平台Id
         /// </summary>
         [Column(Name = "PlatformId")]
-        public long PlatformId { get; set; }
+        public int PlatformId { get; set; }
 
         /// <summary>
         /// 所属站长Id（通过平台关联）
