@@ -47,4 +47,14 @@ public class ChatPlatformController : Controller
 
     [HttpGet]
     public ResultData EnabledPlatforms() => _service.GetEnabledPlatforms();
+
+    [HttpGet]
+    public ResultData OwnerOptions() => _service.GetOwnerOptions();
+
+    [HttpGet]
+    public ResultData AdminOptions() => _service.GetAdminOptions();
+
+    [HttpPost]
+    public ResultData ToggleTakeover([FromForm] int id, [FromForm] int? adminId = null)
+        => _service.ToggleTakeover(id, adminId);
 }

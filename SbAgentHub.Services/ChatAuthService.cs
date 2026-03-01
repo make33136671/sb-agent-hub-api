@@ -121,7 +121,7 @@ namespace SbAgentHub.Services
                 chatUser.Avatar ?? "");
 
             // 4. 分配客服
-            var allocation = _allocationService.AllocateAgent(platform.OwnerId);
+            var allocation = _allocationService.AllocateAgent(platform.OwnerId, platform.Id);
 
             if (allocation.Success && chatUser.AssignedAgentId != allocation.AgentId)
             {

@@ -61,6 +61,18 @@ namespace SbAgentHub.Models
         public DateTime CreateTime { get; set; }
 
         /// <summary>
+        /// 是否开启管理员接管
+        /// </summary>
+        [Column(Name = "IsAdminTakeover", IsNullable = false, InsertValueSql = "0")]
+        public bool IsAdminTakeover { get; set; }
+
+        /// <summary>
+        /// 接管管理员Id
+        /// </summary>
+        [Column(Name = "TakeoverAdminId", IsNullable = true)]
+        public int? TakeoverAdminId { get; set; }
+
+        /// <summary>
         /// 软删除
         /// </summary>
         [Column(Name = "IsDeleted", IsNullable = false, InsertValueSql = "0")]

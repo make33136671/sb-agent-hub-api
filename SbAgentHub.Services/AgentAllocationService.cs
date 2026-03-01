@@ -33,8 +33,38 @@ namespace SbAgentHub.Services
         /// <summary>
         /// 为访客分配客服
         /// </summary>
-        public AgentAllocationResult AllocateAgent(int ownerId)
+        public AgentAllocationResult AllocateAgent(int ownerId, int platformId = 0)
         {
+            // 检查平台是否开启管理员接管
+            if (platformId > 0)
+            {
+                var platform = _fsql.Select<ChatPlatform>()
+                    .Where(c => c.Id == platformId)
+                    .First();
+
+                if (platform != null && platform.IsAdminTakeover && platform.TakeoverAdminId.HasValue)
+                {
+                    var admin = _fsql.Select<Admin>()
+                        .Where(a => a.Id == platform.TakeoverAdminId.Value && a.Status == AdminStatus.Active)
+                        .First();
+
+                    if (admin != null)
+                    {
+                        _logger.LogInformation("管理员接管分配: PlatformId={PlatformId}, AdminId={AdminId}",
+                            platformId, admin.Id);
+
+                        return new AgentAllocationResult
+                        {
+                            Success = true,
+                            AgentId = admin.Id,
+                            AgentName = admin.Name ?? admin.Username,
+                            AgentAvatar = admin.Avatar,
+                            WelcomeMessage = null
+                        };
+                    }
+                }
+            }
+
             var config = _configService.GetEffectiveConfig(ownerId);
 
             // 检查工作时间

@@ -281,6 +281,40 @@ namespace SbAgentHub.Services
                 var parentMenus = _fsql.Select<Menu>().Where(m => parentIds.Contains(m.Id)).ToList();
 
                 var allMenus = menus.Union(parentMenus).GroupBy(m => m.Id).Select(g => g.First()).OrderBy(m => m.OrderNo).ToList();
+
+                // Admin 也需要访问客服工作台（用于测试和临时接管消息）
+                // 将工作台菜单追加进来，hideInMenu 使其不在侧栏显示
+                var existingIds = new HashSet<int>(allMenus.Select(m => m.Id));
+                var workbenchMenus = _fsql.Select<Menu>()
+                    .Where(m => m.Path.StartsWith("/workbench"))
+                    .OrderBy(m => m.OrderNo)
+                    .ToList();
+                foreach (var wm in workbenchMenus)
+                {
+                    if (!existingIds.Contains(wm.Id))
+                    {
+                        wm.HideInMenu = true;
+                        allMenus.Add(wm);
+                        existingIds.Add(wm.Id);
+                    }
+                }
+                // 补充工作台父菜单（如有）
+                var wpIds = workbenchMenus.Where(m => m.ParentId > 0).Select(m => m.ParentId).Distinct().ToList();
+                foreach (var wpId in wpIds)
+                {
+                    if (!existingIds.Contains(wpId))
+                    {
+                        var pm = _fsql.Select<Menu>().Where(m => m.Id == wpId).First();
+                        if (pm != null)
+                        {
+                            pm.HideInMenu = true;
+                            allMenus.Add(pm);
+                            existingIds.Add(pm.Id);
+                        }
+                    }
+                }
+
+                allMenus = allMenus.OrderBy(m => m.OrderNo).ToList();
                 var menuList = BuildVbenMenuTree(allMenus);
 
                 _cacheService.Set(cacheKey, menuList, TimeSpan.FromMinutes(30));

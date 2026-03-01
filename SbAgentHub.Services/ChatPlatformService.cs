@@ -51,10 +51,32 @@ namespace SbAgentHub.Services
 
             query = ApplySorting(query, field, order);
 
-            var data = query.Count(out long dataCount).Page(page, pageSize).ToList(c => new
+            var platforms = query.Count(out long dataCount).Page(page, pageSize).ToList(c => new
             {
                 c.Id, c.OwnerId, c.PlatformName, c.PlatformType, c.PlatformKey,
-                c.Domain, c.IsEnabled, c.WelcomeMessage, c.CreateTime
+                c.Domain, c.IsEnabled, c.WelcomeMessage, c.CreateTime,
+                c.IsAdminTakeover, c.TakeoverAdminId
+            });
+
+            // 批量查询关联名称
+            var ownerIds = platforms.Where(p => p.OwnerId > 0).Select(p => p.OwnerId).Distinct().ToList();
+            var adminIds = platforms.Where(p => p.TakeoverAdminId.HasValue).Select(p => p.TakeoverAdminId.Value).Distinct().ToList();
+
+            var ownerNames = ownerIds.Any()
+                ? _fsql.Select<Member>().Where(m => ownerIds.Contains(m.Id)).ToDictionary(m => m.Id, m => m.Name ?? m.Username)
+                : new Dictionary<int, string>();
+            var adminNames = adminIds.Any()
+                ? _fsql.Select<Admin>().Where(a => adminIds.Contains(a.Id)).ToDictionary(a => a.Id, a => a.Name ?? a.Username)
+                : new Dictionary<int, string>();
+
+            var data = platforms.Select(p => new
+            {
+                p.Id, p.OwnerId, p.PlatformName, p.PlatformType, p.PlatformKey,
+                p.Domain, p.IsEnabled, p.WelcomeMessage, p.CreateTime,
+                p.IsAdminTakeover, p.TakeoverAdminId,
+                OwnerName = p.OwnerId > 0 && ownerNames.ContainsKey(p.OwnerId) ? ownerNames[p.OwnerId] : "",
+                TakeoverAdminName = p.TakeoverAdminId.HasValue && adminNames.ContainsKey(p.TakeoverAdminId.Value)
+                    ? adminNames[p.TakeoverAdminId.Value] : ""
             });
 
             return ResultPage.Ok(data, dataCount, page, pageSize, "数据查询成功");
@@ -71,11 +93,12 @@ namespace SbAgentHub.Services
             if (string.IsNullOrEmpty(platform.PlatformName))
                 return ResultData.No("平台名称不能为空!");
 
-            // Owner 创建时自动设置 OwnerId
+            // Owner 创建时自动设置 OwnerId，Admin 创建时使用传入的 OwnerId
             if (userType == "Member")
             {
                 platform.OwnerId = user.Id();
             }
+            // Admin 创建时：OwnerId 由前端传入（可为 0 表示暂不分配）
 
             // 自动生成 PlatformKey
             platform.PlatformKey = GeneratePlatformKey();
@@ -103,14 +126,25 @@ namespace SbAgentHub.Services
             if (!HasOwnership(existing))
                 return ResultData.No("无权操作此平台!");
 
+            var user = _httpContextAccessor.HttpContext.User;
+            string userType = user.UserType();
+
             existing.PlatformName = platform.PlatformName;
             existing.PlatformType = platform.PlatformType;
             existing.Domain = platform.Domain;
             existing.WelcomeMessage = platform.WelcomeMessage;
 
+            if (userType == "Admin")
+            {
+                existing.OwnerId = platform.OwnerId;
+                existing.IsAdminTakeover = platform.IsAdminTakeover;
+                existing.TakeoverAdminId = platform.TakeoverAdminId;
+            }
+
             UpdateDiy.UpdateColumns(c => new
             {
-                c.PlatformName, c.PlatformType, c.Domain, c.WelcomeMessage
+                c.PlatformName, c.PlatformType, c.Domain, c.WelcomeMessage,
+                c.OwnerId, c.IsAdminTakeover, c.TakeoverAdminId
             }).SetSource(existing).ExecuteAffrows();
 
             return ResultData.Ok("平台更新成功!");
@@ -185,6 +219,58 @@ namespace SbAgentHub.Services
         public ChatPlatform GetByPlatformKey(string platformKey)
         {
             return Select.Where(c => c.PlatformKey == platformKey && c.IsEnabled).First();
+        }
+
+        /// <summary>
+        /// 获取站长选项列表
+        /// </summary>
+        public ResultData GetOwnerOptions()
+        {
+            var owners = _fsql.Select<Member>()
+                .Where(m => m.Role == MemberRole.Owner && m.Status == UserStatus.Active)
+                .ToList(m => new { m.Id, m.Name, m.Username });
+            return ResultData.Ok(owners);
+        }
+
+        /// <summary>
+        /// 获取管理员选项列表
+        /// </summary>
+        public ResultData GetAdminOptions()
+        {
+            var admins = _fsql.Select<Admin>()
+                .Where(a => a.Status == AdminStatus.Active)
+                .ToList(a => new { a.Id, a.Name, a.Username });
+            return ResultData.Ok(admins);
+        }
+
+        /// <summary>
+        /// 切换管理员接管状态
+        /// </summary>
+        public ResultData ToggleTakeover(int id, int? adminId)
+        {
+            var platform = Select.Where(c => c.Id == id).First();
+            if (platform == null) return ResultData.No("平台不存在!");
+
+            if (platform.IsAdminTakeover)
+            {
+                // 关闭接管
+                platform.IsAdminTakeover = false;
+                platform.TakeoverAdminId = null;
+            }
+            else
+            {
+                // 开启接管
+                if (!adminId.HasValue || adminId.Value <= 0)
+                    return ResultData.No("请选择接管管理员!");
+                platform.IsAdminTakeover = true;
+                platform.TakeoverAdminId = adminId.Value;
+            }
+
+            UpdateDiy.UpdateColumns(c => new { c.IsAdminTakeover, c.TakeoverAdminId })
+                .SetSource(platform).ExecuteAffrows();
+
+            return ResultData.Ok(platform.IsAdminTakeover ? "已开启接管" : "已取消接管",
+                new { platform.IsAdminTakeover, platform.TakeoverAdminId });
         }
 
         #region Private Helpers
