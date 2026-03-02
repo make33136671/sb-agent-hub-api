@@ -23,4 +23,22 @@ public class UserPreferencesController : Controller
 
     [HttpPost]
     public ResultData Save([FromForm] UserPreferences prefs) => _service.SavePreferences(prefs);
+
+    /// <summary>
+    /// 获取声音设置
+    /// </summary>
+    [HttpGet]
+    public ResultData GetSoundSettings() => _service.GetSoundSettings();
+
+    /// <summary>
+    /// 保存声音设置
+    /// </summary>
+    [HttpPost]
+    public ResultData SaveSoundSettings([FromForm] SoundSettingsDto dto) => _service.SaveSoundSettings(dto);
+
+    /// <summary>
+    /// 获取可用提示音列表
+    /// </summary>
+    [HttpGet]
+    public ResultData GetAvailableSounds() => _service.GetAvailableSounds();
 }

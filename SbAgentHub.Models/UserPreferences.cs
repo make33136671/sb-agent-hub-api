@@ -25,16 +25,40 @@ namespace SbAgentHub.Models
         public string UserType { get; set; }
 
         /// <summary>
-        /// 新消息提示音
+        /// 新消息提示音开关
         /// </summary>
         [Column(Name = "SoundEnabled")]
         public bool SoundEnabled { get; set; } = true;
 
         /// <summary>
-        /// 提示音音量 (0-100)
+        /// 新消息提示音文件
+        /// </summary>
+        [Column(Name = "SoundFile", StringLength = 100, IsNullable = true)]
+        public string SoundFile { get; set; } = "ding.mp3";
+
+        /// <summary>
+        /// 新消息提示音音量 (0-100)
         /// </summary>
         [Column(Name = "SoundVolume")]
         public int SoundVolume { get; set; } = 80;
+
+        /// <summary>
+        /// 系统通知提示音开关
+        /// </summary>
+        [Column(Name = "SystemNotificationEnabled")]
+        public bool SystemNotificationEnabled { get; set; } = true;
+
+        /// <summary>
+        /// 系统通知提示音文件
+        /// </summary>
+        [Column(Name = "SystemNotificationSound", StringLength = 100, IsNullable = true)]
+        public string SystemNotificationSound { get; set; } = "dingdong.mp3";
+
+        /// <summary>
+        /// 系统通知提示音音量 (0-100)
+        /// </summary>
+        [Column(Name = "SystemNotificationVolume")]
+        public int SystemNotificationVolume { get; set; } = 80;
 
         /// <summary>
         /// 桌面通知
