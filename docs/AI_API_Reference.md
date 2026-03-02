@@ -132,6 +132,27 @@ All admin endpoints require `JwtAdmin` auth (Bearer token) unless noted. Respons
 | POST | TestRedis | JSON: `{ Connection, InstanceName }` |
 | POST | Install | JSON: `SetupRequest` (see [AI_Setup_Wizard](AI_Setup_Wizard.md)) |
 
+## UserPreferencesController `/admin/UserPreferences/[action]`
+
+| Method | Action | Params | Note |
+|--------|--------|--------|------|
+| GET | Get | — | 获取当前用户偏好设置 |
+| POST | Save | form: `UserPreferences` | 保存用户偏好设置 |
+| GET | GetSoundSettings | — | 获取声音设置（`SoundSettingsDto`） |
+| POST | SaveSoundSettings | form: `SoundSettingsDto` | 保存声音设置 |
+| GET | GetAvailableSounds | — | 获取可用提示音列表 |
+
+**SoundSettingsDto 字段：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| newMessageEnabled | bool | true | 新消息提示音开关 |
+| newMessageSound | string | "ding.mp3" | 新消息提示音文件 |
+| newMessageVolume | int | 80 | 新消息提示音音量 (0-100) |
+| systemNotificationEnabled | bool | true | 系统通知提示音开关 |
+| systemNotificationSound | string | "dingdong.mp3" | 系统通知提示音文件 |
+| systemNotificationVolume | int | 80 | 系统通知提示音音量 (0-100) |
+
 ## ApiController `/api/[action]` (JwtApi)
 
 | Method | Action | Params | Note |
