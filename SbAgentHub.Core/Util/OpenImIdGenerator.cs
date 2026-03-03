@@ -10,7 +10,7 @@ namespace SbAgentHub.Core.Util
         /// </summary>
         public static string GenerateAgentId(int memberId)
         {
-            return $"agent_{memberId}";
+            return $"agent_{Guid.NewGuid():N}";
         }
 
         /// <summary>

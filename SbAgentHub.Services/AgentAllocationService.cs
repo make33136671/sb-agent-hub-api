@@ -125,6 +125,7 @@ namespace SbAgentHub.Services
             return new AgentAllocationResult
             {
                 Success = true,
+                AgentOnline = true,
                 AgentId = selectedAgent.Id,
                 AgentName = selectedAgent.Name ?? selectedAgent.Username,
                 AgentAvatar = selectedAgent.Avatar,
@@ -184,53 +185,61 @@ namespace SbAgentHub.Services
 
         #endregion
 
-        #region 离线处理
+        #region 离线处理 — 消息滑落
 
+        /// <summary>
+        /// 没有在线客服时的滑落逻辑：
+        /// 1. 站长在线且未满载 → 分配给站长
+        /// 2. 站长也不在线 → 仍分配给站长（离线也分配，消息会缓存）
+        /// 永不自动滑落到超级管理员（Admin），除非 IsAdminTakeover
+        /// </summary>
         private AgentAllocationResult HandleOffline(CustomerServiceConfig config, int ownerId)
         {
-            return config.OfflineHandling switch
-            {
-                OfflineHandling.AutoReply => new AgentAllocationResult
-                {
-                    Success = false,
-                    Message = config.OfflineAutoReply ?? "客服暂时不在线，请稍后再试。"
-                },
-                OfflineHandling.TransferOther => TryTransferToAnyAgent(ownerId),
-                _ => new AgentAllocationResult
-                {
-                    Success = false,
-                    Message = "客服暂时不在线，请留言，我们将尽快回复。"
-                }
-            };
-        }
-
-        private AgentAllocationResult TryTransferToAnyAgent(int ownerId)
-        {
-            // 尝试分配给任何可用的客服（包括忙碌状态的）
-            var agent = _fsql.Select<Member>()
-                .Where(c => c.OwnerId == ownerId
-                    && c.Role == MemberRole.Agent
-                    && c.Status == UserStatus.Active
-                    && c.OnlineStatus != OnlineStatus.Offline)
-                .OrderBy(c => c.CurrentCount)
+            // 尝试滑落到站长
+            var owner = _fsql.Select<Member>()
+                .Where(c => c.Id == ownerId && c.Status == UserStatus.Active)
                 .First();
 
-            if (agent != null)
+            if (owner != null)
             {
+                bool ownerOnline = owner.OnlineStatus != OnlineStatus.Offline
+                    && owner.CurrentCount < owner.MaxConcurrent;
+
+                if (ownerOnline)
+                {
+                    _logger.LogInformation("客服全部离线，滑落到站长(在线): OwnerId={OwnerId}", ownerId);
+                    return new AgentAllocationResult
+                    {
+                        Success = true,
+                        AgentOnline = true,
+                        AgentId = owner.Id,
+                        AgentName = owner.Name ?? owner.Username,
+                        AgentAvatar = owner.Avatar,
+                        OpenImUserId = owner.OpenImUserId,
+                        WelcomeMessage = owner.WelcomeMessage
+                    };
+                }
+
+                // 站长也不在线 → 仍然分配给站长，标记离线
+                _logger.LogInformation("客服和站长均离线，分配给站长(离线): OwnerId={OwnerId}", ownerId);
                 return new AgentAllocationResult
                 {
                     Success = true,
-                    AgentId = agent.Id,
-                    AgentName = agent.Name ?? agent.Username,
-                    AgentAvatar = agent.Avatar,
-                    OpenImUserId = agent.OpenImUserId,
-                    WelcomeMessage = agent.WelcomeMessage
+                    AgentOnline = false,
+                    AgentId = owner.Id,
+                    AgentName = owner.Name ?? owner.Username,
+                    AgentAvatar = owner.Avatar,
+                    OpenImUserId = owner.OpenImUserId,
+                    WelcomeMessage = owner.WelcomeMessage,
+                    Message = config.OfflineAutoReply ?? "客服暂时不在线，消息已送达，我们会尽快回复。"
                 };
             }
 
+            // 兜底：找不到站长
             return new AgentAllocationResult
             {
                 Success = false,
+                AgentOnline = false,
                 Message = "当前没有可用的客服，请稍后再试。"
             };
         }

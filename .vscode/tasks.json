@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/SB.sln",
+                "${workspaceFolder}/SbAgentHub.sln",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -19,7 +19,9 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/SB.sln",
+                "${workspaceFolder}/SbAgentHub.sln",
+                "-c",
+                "Release",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary;ForceNoAlign"
             ],
@@ -33,7 +35,7 @@
                 "watch",
                 "run",
                 "--project",
-                "${workspaceFolder}/SB.sln"
+                "${workspaceFolder}/SbAgentHub.API"
             ],
             "problemMatcher": "$msCompile"
         }

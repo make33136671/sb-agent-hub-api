@@ -104,6 +104,10 @@ namespace SbAgentHub.Models.Dto
         public bool IsOnline { get; set; }
         public string WelcomeMessage { get; set; }
         public bool AutoSendWelcome { get; set; }
+        /// <summary>
+        /// 预计算的 OpenIM 会话 ID，格式: si_{agentImUserId}_{chatUserId}
+        /// </summary>
+        public string ConversationId { get; set; }
     }
 
     public class SdkPlatformInfo
@@ -122,5 +126,47 @@ namespace SbAgentHub.Models.Dto
         public bool ShowOnlineStatus { get; set; } = true;
         public bool ShowReadStatus { get; set; } = false;
         public bool EnableSatisfactionRating { get; set; } = false;
+    }
+
+    /// <summary>
+    /// 访客离线通知请求（由 sendBeacon 调用）
+    /// </summary>
+    public class VisitorOfflineRequest
+    {
+        public string ChatUserId { get; set; }
+        public string AgentImUserId { get; set; }
+        public string Reason { get; set; }
+        public int? SessionDuration { get; set; }
+    }
+
+    /// <summary>
+    /// 消息已读回执请求
+    /// </summary>
+    public class MessageReadRequest
+    {
+        public string ChatUserId { get; set; }
+        public string AgentImUserId { get; set; }
+        public string ConversationId { get; set; }
+    }
+
+    /// <summary>
+    /// 刷新会话请求（容灾恢复）
+    /// </summary>
+    public class RefreshSessionRequest
+    {
+        public string ChatUserId { get; set; }
+        public string ClientId { get; set; }
+        public string PlatformKey { get; set; }
+    }
+
+    /// <summary>
+    /// 刷新会话响应
+    /// </summary>
+    public class RefreshSessionResponse
+    {
+        public string Token { get; set; }
+        public long ExpireTimeSeconds { get; set; }
+        public string AgentImUserId { get; set; }
+        public bool AgentOnline { get; set; }
     }
 }

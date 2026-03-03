@@ -123,6 +123,9 @@ namespace SbAgentHub.Services
             // 4. 分配客服
             var allocation = _allocationService.AllocateAgent(platform.OwnerId, platform.Id);
 
+            // 确保客服已注册到 OpenIM
+            await EnsureAgentRegisteredAsync(allocation);
+
             if (allocation.Success && chatUser.AssignedAgentId != allocation.AgentId)
             {
                 chatUser.AssignedAgentId = allocation.AgentId;
@@ -134,7 +137,15 @@ namespace SbAgentHub.Services
             // 5. 记录登录
             RecordLogin(chatUser, request);
 
-            // 6. 发送欢迎语
+            // 6. 发送 session_init 确保 OpenIM 会话创建（必须 await，客户端依赖会话已存在）
+            if (allocation.Success && !string.IsNullOrEmpty(allocation.OpenImUserId))
+            {
+                var reason = isNewUser ? "login" : "reconnect";
+                await _openImMessageService.SendSessionInitMessageAsync(
+                    allocation.OpenImUserId, chatUser.ChatUserId, reason);
+            }
+
+            // 7. 新用户发送欢迎语（会话已创建，fire-and-forget 即可）
             if (isNewUser && allocation.Success && !string.IsNullOrEmpty(allocation.WelcomeMessage))
             {
                 _ = _openImMessageService.SendWelcomeMessageAsync(
@@ -152,8 +163,8 @@ namespace SbAgentHub.Services
                 AgentName = allocation.AgentName,
                 AgentAvatar = allocation.AgentAvatar,
                 AgentImUserId = allocation.OpenImUserId,
-                AgentOnline = allocation.Success,
-                OfflineMessage = allocation.Success ? null : allocation.Message,
+                AgentOnline = allocation.AgentOnline,
+                OfflineMessage = !allocation.AgentOnline ? allocation.Message : null,
                 WelcomeMessage = allocation.WelcomeMessage,
                 PlatformName = platform.PlatformName
             });
@@ -210,6 +221,7 @@ namespace SbAgentHub.Services
                     IsOnline = authResponse.AgentOnline,
                     WelcomeMessage = authResponse.WelcomeMessage,
                     AutoSendWelcome = !string.IsNullOrEmpty(authResponse.WelcomeMessage),
+                    ConversationId = $"si_{authResponse.AgentImUserId}_{authResponse.ChatUserId}",
                 } : null,
                 Platform = new SdkPlatformInfo
                 {
@@ -279,7 +291,147 @@ namespace SbAgentHub.Services
             });
         }
 
+        /// <summary>
+        /// 刷新会话 — 容灾恢复：重新获取 Token + 重新分配客服
+        /// </summary>
+        public async Task<ResultData> RefreshSessionAsync(RefreshSessionRequest request)
+        {
+            if (string.IsNullOrEmpty(request.ChatUserId))
+                return ResultData.No("ChatUserId 不能为空!");
+
+            var chatUser = _chatUserService.GetByChatUserId(request.ChatUserId);
+            if (chatUser == null)
+                return ResultData.No("用户不存在!");
+
+            // 验证 clientId 匹配
+            if (!string.IsNullOrEmpty(request.ClientId) && chatUser.ClientId != request.ClientId)
+                return ResultData.No("客户端标识不匹配!");
+
+            // 1. 重新获取 OpenIM Token
+            var tokenData = await _openImAuthService.GetUserTokenAsync(chatUser.ChatUserId);
+            if (tokenData == null)
+                return ResultData.No("获取 Token 失败!");
+
+            // 2. 查找平台信息用于重新分配
+            ChatPlatform platform = null;
+            if (!string.IsNullOrEmpty(request.PlatformKey))
+            {
+                platform = _platformService.GetByPlatformKey(request.PlatformKey);
+            }
+            if (platform == null)
+            {
+                platform = _fsql.Select<ChatPlatform>()
+                    .Where(c => c.Id == chatUser.PlatformId)
+                    .First();
+            }
+
+            // 3. 重新执行分配逻辑（含滑落）
+            string agentImUserId = null;
+            bool agentOnline = false;
+
+            if (platform != null)
+            {
+                var allocation = _allocationService.AllocateAgent(platform.OwnerId, platform.Id);
+
+                // 确保客服已注册到 OpenIM
+                await EnsureAgentRegisteredAsync(allocation);
+
+                if (allocation.Success)
+                {
+                    agentImUserId = allocation.OpenImUserId;
+                    agentOnline = allocation.AgentOnline;
+
+                    // 如果分配的客服变了，更新
+                    if (chatUser.AssignedAgentId != allocation.AgentId)
+                    {
+                        chatUser.AssignedAgentId = allocation.AgentId;
+                        _fsql.Update<ChatUser>().SetSource(chatUser)
+                            .UpdateColumns(c => c.AssignedAgentId)
+                            .ExecuteAffrows();
+                    }
+                }
+            }
+
+            // 如果重新分配没有结果，保留原来的客服
+            if (string.IsNullOrEmpty(agentImUserId) && chatUser.AssignedAgentId.HasValue)
+            {
+                var agent = _fsql.Select<Member>()
+                    .Where(c => c.Id == chatUser.AssignedAgentId.Value)
+                    .First();
+                if (agent != null)
+                {
+                    // 原客服也需确保已注册 OpenIM
+                    if (string.IsNullOrEmpty(agent.OpenImUserId))
+                    {
+                        var imUserId = OpenImIdGenerator.GenerateAgentId(agent.Id);
+                        await _openImUserService.RegisterUserAsync(
+                            imUserId, agent.Name ?? agent.Username, agent.Avatar ?? "");
+                        agent.OpenImUserId = imUserId;
+                        _fsql.Update<Member>().SetSource(agent)
+                            .UpdateColumns(c => c.OpenImUserId)
+                            .ExecuteAffrows();
+                    }
+                    agentImUserId = agent.OpenImUserId;
+                    agentOnline = agent.OnlineStatus != OnlineStatus.Offline;
+                }
+            }
+
+            // 更新在线状态
+            chatUser.OnlineStatus = OnlineStatus.Online;
+            chatUser.LastActiveTime = DateTime.Now;
+            _fsql.Update<ChatUser>().SetSource(chatUser)
+                .UpdateColumns(c => new { c.OnlineStatus, c.LastActiveTime })
+                .ExecuteAffrows();
+
+            return ResultData.Ok(new RefreshSessionResponse
+            {
+                Token = tokenData.Token,
+                ExpireTimeSeconds = tokenData.ExpireTimeSeconds,
+                AgentImUserId = agentImUserId,
+                AgentOnline = agentOnline
+            });
+        }
+
         #region Private
+
+        /// <summary>
+        /// 确保分配的客服已注册到 OpenIM，如未注册则自动生成 ID 并注册
+        /// </summary>
+        private async Task<string> EnsureAgentRegisteredAsync(AgentAllocationResult allocation)
+        {
+            if (!allocation.Success || !allocation.AgentId.HasValue)
+                return allocation.OpenImUserId;
+
+            // 已有 OpenImUserId，直接返回
+            if (!string.IsNullOrEmpty(allocation.OpenImUserId))
+                return allocation.OpenImUserId;
+
+            // 查询 Member 信息
+            var member = _fsql.Select<Member>()
+                .Where(c => c.Id == allocation.AgentId.Value)
+                .First();
+
+            if (member == null) return null;
+
+            // 生成并注册
+            var imUserId = OpenImIdGenerator.GenerateAgentId(member.Id);
+            await _openImUserService.RegisterUserAsync(
+                imUserId, member.Name ?? member.Username, member.Avatar ?? "");
+
+            // 更新数据库
+            member.OpenImUserId = imUserId;
+            _fsql.Update<Member>().SetSource(member)
+                .UpdateColumns(c => c.OpenImUserId)
+                .ExecuteAffrows();
+
+            // 同步更新分配结果
+            allocation.OpenImUserId = imUserId;
+
+            _logger.LogInformation("客服 OpenIM 自动注册: MemberId={MemberId}, ImUserId={ImUserId}",
+                member.Id, imUserId);
+
+            return imUserId;
+        }
 
         private void RecordLogin(ChatUser chatUser, VisitorAuthRequest request)
         {

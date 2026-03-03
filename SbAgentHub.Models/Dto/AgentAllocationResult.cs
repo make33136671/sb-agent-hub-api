@@ -13,5 +13,10 @@ namespace SbAgentHub.Models.Dto
         public string OpenImUserId { get; set; }
         public string WelcomeMessage { get; set; }
         public string Message { get; set; }
+
+        /// <summary>
+        /// 分配到的客服是否在线
+        /// </summary>
+        public bool AgentOnline { get; set; }
     }
 }
