@@ -71,7 +71,7 @@ namespace SbAgentHub.Services
             {
                 string adminToken = await GetAdminTokenAsync();
 
-                var request = new HttpRequestMessage(HttpMethod.Post, "/auth/user_token");
+                var request = new HttpRequestMessage(HttpMethod.Post, "/auth/get_user_token");
                 request.Headers.Add("operationID", Guid.NewGuid().ToString());
                 request.Headers.Add("token", adminToken);
                 request.Content = JsonContent.Create(new

@@ -160,6 +160,71 @@ namespace SbAgentHub.Services
         }
 
         /// <summary>
+        /// SDK 端获取 IM Token（适配 openim-core-js SDK 的接口格式）
+        /// </summary>
+        public async Task<ResultData> GetImTokenForSdkAsync(GetImTokenFormRequest request)
+        {
+            // 映射为 VisitorAuthRequest
+            var visitorRequest = new VisitorAuthRequest
+            {
+                PlatformKey = request.PlatformKey,
+                ClientId = request.ClientId,
+                ExternalUserId = request.UserId,
+                Nickname = request.Nickname,
+                Avatar = request.Avatar,
+                DeviceType = request.PlatformType.ToString(),
+            };
+
+            // 调用核心认证逻辑
+            var result = await VisitorAuthAsync(visitorRequest);
+            if (result.Code != 0) return result;
+
+            var authResponse = result.Data as VisitorAuthResponse;
+            if (authResponse == null) return ResultData.No("认证失败!");
+
+            // 查询 ChatUser 获取更多信息
+            var chatUser = _chatUserService.GetByChatUserId(authResponse.ChatUserId);
+
+            // 映射为 SDK 期望的嵌套格式
+            var sdkResponse = new GetImTokenSdkResponse
+            {
+                UserID = authResponse.ChatUserId,
+                Token = authResponse.ImToken,
+                ExpireTime = authResponse.ImTokenExpire,
+                User = new SdkUserProfile
+                {
+                    UserId = authResponse.ChatUserId,
+                    UserType = chatUser != null ? (int)chatUser.UserType : 0,
+                    IsNewUser = false,
+                    Nickname = authResponse.Nickname ?? "访客",
+                    Avatar = authResponse.Avatar ?? "",
+                    ExternalUserId = request.UserId,
+                    DeviceId = request.ClientId,
+                },
+                Agent = authResponse.AgentImUserId != null ? new SdkAgentInfo
+                {
+                    AgentUserId = authResponse.AgentImUserId,
+                    Nickname = authResponse.AgentName ?? "客服",
+                    Avatar = authResponse.AgentAvatar ?? "",
+                    OnlineStatus = authResponse.AgentOnline ? 1 : 0,
+                    IsOnline = authResponse.AgentOnline,
+                    WelcomeMessage = authResponse.WelcomeMessage,
+                    AutoSendWelcome = !string.IsNullOrEmpty(authResponse.WelcomeMessage),
+                } : null,
+                Platform = new SdkPlatformInfo
+                {
+                    PlatformId = chatUser?.PlatformId ?? 0,
+                    PlatformName = authResponse.PlatformName ?? "",
+                    OfflineMessage = authResponse.OfflineMessage,
+                    AllowOfflineMessage = true,
+                },
+                Features = new SdkFeatureFlags()
+            };
+
+            return ResultData.Ok(sdkResponse);
+        }
+
+        /// <summary>
         /// 刷新 OpenIM Token
         /// </summary>
         public async Task<ResultData> RefreshImTokenAsync(string chatUserId)

@@ -27,6 +27,13 @@ public class ChatAuthController : Controller
         => await _service.VisitorAuthAsync(request);
 
     /// <summary>
+    /// SDK 端获取 IM Token（FormData，匹配 openim-core-js SDK）
+    /// </summary>
+    [HttpPost, AllowAnonymous]
+    public async Task<ResultData> GetImToken([FromForm] GetImTokenFormRequest request)
+        => await _service.GetImTokenForSdkAsync(request);
+
+    /// <summary>
     /// 刷新 OpenIM Token
     /// </summary>
     [HttpPost, AllowAnonymous]
