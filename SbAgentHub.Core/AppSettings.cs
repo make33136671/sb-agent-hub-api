@@ -266,9 +266,14 @@
     public class OpenIMConfig
     {
         /// <summary>
-        /// OpenIM Server API 地址
+        /// OpenIM Server HTTP API 地址
         /// </summary>
         public string ApiUrl { get; set; } = "";
+
+        /// <summary>
+        /// OpenIM Server WebSocket 地址
+        /// </summary>
+        public string WsUrl { get; set; } = "";
 
         /// <summary>
         /// 管理员用户ID

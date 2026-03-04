@@ -1,5 +1,6 @@
 using FreeSql;
 using Microsoft.Extensions.Logging;
+using SbAgentHub.Core;
 using SbAgentHub.Core.Attribute;
 using SbAgentHub.Core.Util;
 using SbAgentHub.Models;
@@ -21,6 +22,10 @@ namespace SbAgentHub.Services
         private readonly OpenImUserService _openImUserService;
         private readonly OpenImAuthService _openImAuthService;
         private readonly OpenImMessageService _openImMessageService;
+        private readonly AccessViolationService _violationService;
+        private readonly QueueService _queueService;
+        private readonly QuotaService _quotaService;
+        private readonly VisitorFormService _visitorFormService;
 
         public ChatAuthService(
             IFreeSql fsql,
@@ -30,7 +35,11 @@ namespace SbAgentHub.Services
             AgentAllocationService allocationService,
             OpenImUserService openImUserService,
             OpenImAuthService openImAuthService,
-            OpenImMessageService openImMessageService)
+            OpenImMessageService openImMessageService,
+            AccessViolationService violationService,
+            QueueService queueService,
+            QuotaService quotaService,
+            VisitorFormService visitorFormService)
         {
             _fsql = fsql;
             _logger = logger;
@@ -40,11 +49,23 @@ namespace SbAgentHub.Services
             _openImUserService = openImUserService;
             _openImAuthService = openImAuthService;
             _openImMessageService = openImMessageService;
+            _violationService = violationService;
+            _queueService = queueService;
+            _quotaService = quotaService;
+            _visitorFormService = visitorFormService;
         }
 
         /// <summary>
         /// 访客认证 — Widget 初始化时调用
         /// </summary>
+        /// <summary>
+        /// 根据 PlatformKey 获取平台（公开方法，供 Controller 调用）
+        /// </summary>
+        public ChatPlatform GetPlatformByKey(string platformKey)
+        {
+            return _platformService.GetByPlatformKey(platformKey);
+        }
+
         public async Task<ResultData> VisitorAuthAsync(VisitorAuthRequest request)
         {
             // 1. 验证平台
@@ -53,7 +74,26 @@ namespace SbAgentHub.Services
                 return ResultData.No("无效的平台秘钥!");
 
             if (!platform.IsEnabled)
+            {
+                _violationService.Log(platform.Id, request.PlatformKey, platform.OwnerId,
+                    request.RequestDomain, request.Source ?? "unknown", platform.AccessType.ToString().ToLower(),
+                    "platform_disabled", request.IpAddress, request.UserAgent);
                 return ResultData.No("该平台已停用!");
+            }
+
+            // 1.5 接入来源校验
+            var validationResult = ValidateAccess(platform, request);
+            if (validationResult != null)
+                return validationResult;
+
+            // 1.6 每日访客数限制
+            var dailyCheck = _quotaService.CheckQuota(platform.OwnerId, "max_daily_visitors");
+            if (!dailyCheck.IsAvailable)
+            {
+                _logger.LogWarning("每日访客数超限: OwnerId={OwnerId}, Used={Used}, Limit={Limit}",
+                    platform.OwnerId, dailyCheck.Used, dailyCheck.Limit);
+                return ResultData.No("今日咨询量已达上限，请明日再来。");
+            }
 
             // 2. 查找或创建聊天用户
             ChatUser chatUser = null;
@@ -123,6 +163,29 @@ namespace SbAgentHub.Services
             // 4. 分配客服
             var allocation = _allocationService.AllocateAgent(platform.OwnerId, platform.Id);
 
+            // 4.1 如果需要排队（并发会话超限）
+            if (!allocation.Success && allocation.NeedsQueue)
+            {
+                var queueEntry = _queueService.Enqueue(chatUser.ChatUserId, platform.Id, platform.OwnerId);
+                var positionInfo = _queueService.GetPosition(chatUser.ChatUserId);
+
+                // 仍然返回 Token 让客户端能连接 WebSocket，但标记排队状态
+                return ResultData.Ok(new VisitorAuthResponse
+                {
+                    ChatUserId = chatUser.ChatUserId,
+                    ImToken = imTokenData?.Token,
+                    ImTokenExpire = imTokenData?.ExpireTimeSeconds ?? 0,
+                    Nickname = chatUser.Nickname,
+                    Avatar = chatUser.Avatar,
+                    IsQueued = true,
+                    QueuePosition = positionInfo?.Position ?? 0,
+                    QueueWaitingCount = positionInfo?.TotalWaiting ?? 0,
+                    EstimatedWaitMinutes = positionInfo?.EstimatedWaitMinutes ?? 0,
+                    PlatformName = platform.PlatformName,
+                    OfflineMessage = allocation.Message
+                });
+            }
+
             // 确保客服已注册到 OpenIM
             await EnsureAgentRegisteredAsync(allocation);
 
@@ -173,7 +236,8 @@ namespace SbAgentHub.Services
         /// <summary>
         /// SDK 端获取 IM Token（适配 openim-core-js SDK 的接口格式）
         /// </summary>
-        public async Task<ResultData> GetImTokenForSdkAsync(GetImTokenFormRequest request)
+        public async Task<ResultData> GetImTokenForSdkAsync(GetImTokenFormRequest request,
+            string requestDomain = "", string ipAddress = "", string userAgent = "")
         {
             // 映射为 VisitorAuthRequest
             var visitorRequest = new VisitorAuthRequest
@@ -184,6 +248,10 @@ namespace SbAgentHub.Services
                 Nickname = request.Nickname,
                 Avatar = request.Avatar,
                 DeviceType = request.PlatformType.ToString(),
+                Source = request.Source,
+                RequestDomain = requestDomain,
+                IpAddress = ipAddress,
+                UserAgent = userAgent,
             };
 
             // 调用核心认证逻辑
@@ -230,7 +298,16 @@ namespace SbAgentHub.Services
                     OfflineMessage = authResponse.OfflineMessage,
                     AllowOfflineMessage = true,
                 },
-                Features = new SdkFeatureFlags()
+                Features = BuildFeatureFlags(chatUser?.OwnerId ?? 0),
+                Queue = authResponse.IsQueued ? new SdkQueueInfo
+                {
+                    IsQueued = true,
+                    Position = authResponse.QueuePosition,
+                    TotalWaiting = authResponse.QueueWaitingCount,
+                    EstimatedWaitMinutes = authResponse.EstimatedWaitMinutes
+                } : null,
+                VisitorForm = BuildVisitorForm(chatUser?.OwnerId ?? 0, chatUser?.PlatformId ?? 0),
+                ImConfig = BuildImConfig()
             };
 
             return ResultData.Ok(sdkResponse);
@@ -283,11 +360,13 @@ namespace SbAgentHub.Services
             if (tokenData == null)
                 return ResultData.No("获取 Token 失败!");
 
+            var imConfig = BuildImConfig();
             return ResultData.Ok(new
             {
                 imUserId,
                 token = tokenData.Token,
-                expireTimeSeconds = tokenData.ExpireTimeSeconds
+                expireTimeSeconds = tokenData.ExpireTimeSeconds,
+                imConfig
             });
         }
 
@@ -393,6 +472,129 @@ namespace SbAgentHub.Services
         }
 
         #region Private
+
+        /// <summary>
+        /// 构建 IM 服务器连接配置（从 appsettings 读取，下发给客户端）
+        /// </summary>
+        private SdkImConfig BuildImConfig()
+        {
+            var config = AppGlobal.AppSettings?.OpenIM;
+            return new SdkImConfig
+            {
+                ApiUrl = config?.ApiUrl ?? "",
+                WsUrl = config?.WsUrl ?? ""
+            };
+        }
+
+        /// <summary>
+        /// 构建功能开关
+        /// </summary>
+        private SdkFeatureFlags BuildFeatureFlags(int ownerId)
+        {
+            if (ownerId <= 0) return new SdkFeatureFlags();
+            return new SdkFeatureFlags
+            {
+                EnableSatisfactionRating = _quotaService.CheckFeature(ownerId, "feature_satisfaction"),
+                EnableVisitorForm = _quotaService.CheckFeature(ownerId, "feature_visitor_form"),
+            };
+        }
+
+        /// <summary>
+        /// 构建访客表单配置
+        /// </summary>
+        private SdkVisitorFormConfig BuildVisitorForm(int ownerId, int platformId)
+        {
+            if (ownerId <= 0) return null;
+            if (!_quotaService.CheckFeature(ownerId, "feature_visitor_form")) return null;
+
+            var form = _visitorFormService.GetActiveForm(ownerId, platformId);
+            if (form == null) return null;
+
+            return new SdkVisitorFormConfig
+            {
+                FormId = form.Id,
+                FormName = form.FormName,
+                FormFields = form.FormFields,
+                IsRequired = form.IsRequired
+            };
+        }
+
+        private ResultData ValidateAccess(ChatPlatform platform, VisitorAuthRequest request)
+        {
+            string source = request.Source;
+
+            // 兼容旧版本（不带 source 参数）：默认 js，过渡期不强制校验
+            if (string.IsNullOrEmpty(source))
+                return null;
+
+            // 接入类型校验
+            string expectedSource = platform.AccessType.ToString().ToLower();
+            if (source.ToLower() != expectedSource)
+            {
+                _violationService.Log(platform.Id, platform.PlatformKey, platform.OwnerId,
+                    request.RequestDomain, source, expectedSource,
+                    "type_mismatch", request.IpAddress, request.UserAgent);
+
+                _logger.LogWarning("接入类型不匹配: PlatformKey={PlatformKey}, Expected={Expected}, Got={Got}",
+                    platform.PlatformKey, expectedSource, source);
+
+                return ResultData.No("接入方式不匹配，请检查平台配置!");
+            }
+
+            // 域名白名单校验（Chat 类型豁免）
+            if (platform.AccessType != AccessType.Chat && !string.IsNullOrEmpty(request.RequestDomain))
+            {
+                if (!IsDomainAllowed(platform, request.RequestDomain))
+                {
+                    _violationService.Log(platform.Id, platform.PlatformKey, platform.OwnerId,
+                        request.RequestDomain, source, expectedSource,
+                        "domain_mismatch", request.IpAddress, request.UserAgent);
+
+                    _logger.LogWarning("域名不匹配: PlatformKey={PlatformKey}, Domain={Domain}",
+                        platform.PlatformKey, request.RequestDomain);
+
+                    return ResultData.No("接入域名未授权，请在平台设置中添加域名白名单!");
+                }
+            }
+
+            return null; // 校验通过
+        }
+
+        /// <summary>
+        /// 检查域名是否在白名单中
+        /// </summary>
+        private bool IsDomainAllowed(ChatPlatform platform, string requestDomain)
+        {
+            // 如果没有配置白名单，允许所有域名
+            if (string.IsNullOrEmpty(platform.AllowedDomains) && string.IsNullOrEmpty(platform.Domain))
+                return true;
+
+            requestDomain = requestDomain.ToLower().Trim();
+
+            // 优先检查 AllowedDomains（JSON 数组）
+            if (!string.IsNullOrEmpty(platform.AllowedDomains))
+            {
+                try
+                {
+                    var domains = System.Text.Json.JsonSerializer.Deserialize<string[]>(platform.AllowedDomains);
+                    if (domains != null && domains.Any(d => d.ToLower().Trim() == requestDomain))
+                        return true;
+                }
+                catch
+                {
+                    // JSON 解析失败，忽略
+                }
+            }
+
+            // 兼容旧 Domain 字段
+            if (!string.IsNullOrEmpty(platform.Domain))
+            {
+                if (platform.Domain.ToLower().Trim() == requestDomain)
+                    return true;
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// 确保分配的客服已注册到 OpenIM，如未注册则自动生成 ID 并注册
