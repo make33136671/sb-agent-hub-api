@@ -153,6 +153,41 @@ namespace SbAgentHub.Services
         }
 
         /// <summary>
+        /// 批量查询用户在线状态
+        /// </summary>
+        public async Task<Dictionary<string, bool>> GetUsersOnlineStatusAsync(List<string> userIds)
+        {
+            if (string.IsNullOrEmpty(_apiUrl) || userIds == null || userIds.Count == 0)
+                return new Dictionary<string, bool>();
+
+            try
+            {
+                string adminToken = await _authService.GetAdminTokenAsync();
+
+                var request = new HttpRequestMessage(HttpMethod.Post, "/user/get_users_online_status");
+                request.Headers.Add("operationID", Guid.NewGuid().ToString());
+                request.Headers.Add("token", adminToken);
+                request.Content = JsonContent.Create(new { userIDs = userIds });
+
+                var response = await _httpClient.SendAsync(request);
+                var result = await response.Content.ReadFromJsonAsync<OpenImResponse<List<OpenImOnlineStatusItem>>>();
+
+                if (result?.ErrCode == 0 && result.Data != null)
+                {
+                    return result.Data.ToDictionary(x => x.UserID, x => x.Status == 1);
+                }
+
+                _logger.LogWarning("查询 OpenIM 在线状态失败: {ErrCode} {ErrMsg}", result?.ErrCode, result?.ErrMsg);
+                return new Dictionary<string, bool>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "查询 OpenIM 在线状态异常");
+                return new Dictionary<string, bool>();
+            }
+        }
+
+        /// <summary>
         /// 注册用户并获取 Token
         /// </summary>
         public async Task<OpenImTokenData> RegisterAndGetTokenAsync(string userId, string nickname, string faceURL = "", int platformId = 5)

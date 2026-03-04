@@ -69,6 +69,21 @@ namespace SbAgentHub.Models.Dto
     }
 
     /// <summary>
+    /// OpenIM 用户在线状态项
+    /// </summary>
+    public class OpenImOnlineStatusItem
+    {
+        [JsonPropertyName("userID")]
+        public string UserID { get; set; }
+
+        /// <summary>
+        /// 1=online, 其他=offline
+        /// </summary>
+        [JsonPropertyName("status")]
+        public int Status { get; set; }
+    }
+
+    /// <summary>
     /// OpenIM 发送消息请求
     /// </summary>
     public class OpenImSendMsgRequest

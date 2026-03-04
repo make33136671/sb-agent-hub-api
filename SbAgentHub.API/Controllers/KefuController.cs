@@ -22,8 +22,8 @@ public class KefuController : Controller
     /// 我的访客列表
     /// </summary>
     [HttpGet]
-    public ResultData MyVisitors(string keyword = "", int page = 1, int pageSize = 50)
-        => _service.GetMyVisitors(keyword, page, pageSize);
+    public async Task<ResultData> MyVisitors(string keyword = "", int page = 1, int pageSize = 50)
+        => await _service.GetMyVisitors(keyword, page, pageSize);
 
     /// <summary>
     /// 更新客服状态
@@ -52,4 +52,18 @@ public class KefuController : Controller
     [HttpGet]
     public ResultData MyStatus()
         => _service.GetMyStatus();
+
+    /// <summary>
+    /// 排队等待列表
+    /// </summary>
+    [HttpGet]
+    public ResultData QueueWaitingList()
+        => _service.GetQueueWaitingList();
+
+    /// <summary>
+    /// 从排队中接入访客
+    /// </summary>
+    [HttpPost]
+    public ResultData AcceptFromQueue([FromForm] string chatUserId)
+        => _service.AcceptFromQueue(chatUserId);
 }
