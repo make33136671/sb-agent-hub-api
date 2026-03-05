@@ -153,6 +153,24 @@ All admin endpoints require `JwtAdmin` auth (Bearer token) unless noted. Respons
 | systemNotificationSound | string | "dingdong.mp3" | 系统通知提示音文件 |
 | systemNotificationVolume | int | 80 | 系统通知提示音音量 (0-100) |
 
+## CustomerServiceConfigController `/admin/CustomerServiceConfig/[action]`
+
+| Method | Action | Params | Note |
+|--------|--------|--------|------|
+| GET | GetConfig | — | 获取当前 Owner 的客服配置 |
+| POST | SaveConfig | form/body: `CustomerServiceConfig` | 保存客服配置 |
+
+**CustomerServiceConfig 关键字段：**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| allocationRule | int | 0 | 分配规则：0=轮询 1=最少优先 2=随机 3=固定 |
+| enableWorkTime | bool | false | 是否启用工作时间限制 |
+| workTimeStart | string | "09:00" | 工作时间开始 |
+| workTimeEnd | string | "18:00" | 工作时间结束 |
+| enableQueue | bool | false | 是否启用排队功能 |
+| maxConcurrentSessions | int | 50 | 最大并发会话数（排队时生效）|
+
 ## ApiController `/api/[action]` (JwtApi)
 
 | Method | Action | Params | Note |

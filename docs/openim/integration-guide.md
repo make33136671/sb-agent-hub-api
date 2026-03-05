@@ -114,6 +114,31 @@ SbAgentHub.Services/
 | 102 | 图片消息 |
 | 110 | 自定义消息 |
 
+### 排队功能开关
+
+排队功能由 `CustomerServiceConfig.EnableQueue` 控制，按站长（OwnerId）隔离配置。
+
+**配置字段**（`SB_CustomerServiceConfig` 表）：
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `EnableQueue` | bool | false | 是否启用排队功能 |
+| `MaxConcurrentSessions` | int | 50 | 最大并发会话数（启用排队时生效）|
+
+**后端行为**：
+
+- `EnableQueue = false`（默认）：`AgentAllocationService.AllocateAgent()` 跳过并发会话检查，访客直接分配客服
+- `EnableQueue = true`：检查当前在线访客数，超过 `MaxConcurrentSessions` 时返回 `NeedsQueue = true`，触发排队
+
+**前端行为**：
+
+认证响应中 `SdkFeatureFlags.EnableQueue` 下发排队开关状态：
+
+- `enableQueue = false`：客户端（agent-chat / agent-widget-js）忽略排队信息，直接进入聊天
+- `enableQueue = true` + `queue.isQueued = true`：显示排队 UI，轮询等待接入
+
+**管理后台**：`cs-config` 配置页面"排队设置"区域，支持开关切换和最大并发数设置。
+
 ### ChatAuthService — 聊天认证流程
 
 **访客认证流程** (`VisitorAuthAsync`)：
@@ -126,9 +151,10 @@ SbAgentHub.Services/
    └── 都未找到 → 新建用户（生成 chat_xxx ID）
 3. 在 OpenIM 注册用户 + 获取 Token
 4. 分配客服（AgentAllocationService）
+   └── EnableQueue=true 且并发超限 → 进入排队
 5. 记录登录日志
 6. 新用户 + 有客服 → 发送欢迎语
-7. 返回认证信息（IM Token、客服信息、平台信息）
+7. 返回认证信息（IM Token、客服信息、平台信息、排队状态）
 ```
 
 **Token 刷新** (`RefreshImTokenAsync`)：
