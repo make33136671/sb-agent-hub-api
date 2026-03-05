@@ -40,10 +40,16 @@ namespace SbAgentHub.Tests.Integration.BusinessFlowTests
                 new TestOutputLogger<OpenImMessageService>(output), authService);
 
             // 构建业务服务链
+            var quotaService = new QuotaService(
+                _fsql,
+                new TestOutputLogger<QuotaService>(output),
+                null!);
+
             var platformService = new ChatPlatformService(
                 _fsql,
                 new TestOutputLogger<ChatPlatformService>(output),
-                null!); // IHttpContextAccessor — 测试中不依赖
+                null!, // IHttpContextAccessor — 测试中不依赖
+                quotaService);
 
             var chatUserService = new ChatUserService(
                 _fsql,
@@ -55,10 +61,23 @@ namespace SbAgentHub.Tests.Integration.BusinessFlowTests
                 new TestOutputLogger<CustomerServiceConfigService>(output),
                 null!);
 
+            var queueService = new QueueService(
+                _fsql,
+                new TestOutputLogger<QueueService>(output));
+
             var allocationService = new AgentAllocationService(
                 _fsql,
                 new TestOutputLogger<AgentAllocationService>(output),
-                configService);
+                configService,
+                quotaService,
+                queueService);
+
+            var violationService = new AccessViolationService(
+                _fsql,
+                new TestOutputLogger<AccessViolationService>(output),
+                null!);
+
+            var visitorFormService = new VisitorFormService(_fsql, null!, quotaService);
 
             _chatAuthService = new ChatAuthService(
                 _fsql,
@@ -68,7 +87,13 @@ namespace SbAgentHub.Tests.Integration.BusinessFlowTests
                 allocationService,
                 userService,
                 authService,
-                messageService);
+                messageService,
+                violationService,
+                queueService,
+                quotaService,
+                visitorFormService,
+                configService,
+                null!); // IHttpContextAccessor — 测试中不依赖
 
             // 从数据库读取测试数据
             LoadTestData();

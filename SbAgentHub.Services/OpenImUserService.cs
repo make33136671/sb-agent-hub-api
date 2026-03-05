@@ -23,7 +23,7 @@ namespace SbAgentHub.Services
             _authService = authService;
 
             var config = AppGlobal.AppSettings?.OpenIM;
-            _apiUrl = config?.ApiUrl?.TrimEnd('/') ?? "";
+            _apiUrl = config?.ImApiUrl?.TrimEnd('/') ?? "";
 
             _httpClient = new HttpClient();
             if (!string.IsNullOrEmpty(_apiUrl))
@@ -41,26 +41,7 @@ namespace SbAgentHub.Services
 
             try
             {
-                string adminToken = await _authService.GetAdminTokenAsync();
-
-                var request = new HttpRequestMessage(HttpMethod.Post, "/user/user_register");
-                request.Headers.Add("operationID", Guid.NewGuid().ToString());
-                request.Headers.Add("token", adminToken);
-                request.Content = JsonContent.Create(new
-                {
-                    users = new[]
-                    {
-                        new OpenImUser
-                        {
-                            UserID = userId,
-                            Nickname = nickname,
-                            FaceURL = faceURL
-                        }
-                    }
-                });
-
-                var response = await _httpClient.SendAsync(request);
-                var result = await response.Content.ReadFromJsonAsync<OpenImResponse<object>>();
+                var result = await DoRegisterUserAsync(userId, nickname, faceURL);
 
                 if (result?.ErrCode == 0)
                 {
@@ -75,6 +56,25 @@ namespace SbAgentHub.Services
                     return true;
                 }
 
+                // 1507 TokenNotExistError：管理员 Token 失效，清除缓存后重试一次
+                if (result?.ErrCode == 1507)
+                {
+                    _logger.LogWarning("OpenIM 管理员 Token 已失效，清除缓存后重试注册: {UserId}", userId);
+                    _authService.InvalidateAdminToken();
+                    result = await DoRegisterUserAsync(userId, nickname, faceURL);
+
+                    if (result?.ErrCode == 0)
+                    {
+                        _logger.LogInformation("OpenIM 用户注册成功（重试）: {UserId}", userId);
+                        return true;
+                    }
+                    if (result?.ErrCode >= 11001 && result?.ErrCode <= 11099)
+                    {
+                        _logger.LogInformation("OpenIM 用户已存在（重试）: {UserId}", userId);
+                        return true;
+                    }
+                }
+
                 _logger.LogWarning("OpenIM 用户注册失败: {ErrCode} {ErrMsg}", result?.ErrCode, result?.ErrMsg);
                 return false;
             }
@@ -83,6 +83,30 @@ namespace SbAgentHub.Services
                 _logger.LogError(ex, "OpenIM 用户注册异常: {UserId}", userId);
                 return false;
             }
+        }
+
+        private async Task<OpenImResponse<object>> DoRegisterUserAsync(string userId, string nickname, string faceURL)
+        {
+            string adminToken = await _authService.GetAdminTokenAsync();
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "/user/user_register");
+            request.Headers.Add("operationID", Guid.NewGuid().ToString());
+            request.Headers.Add("token", adminToken);
+            request.Content = JsonContent.Create(new
+            {
+                users = new[]
+                {
+                    new OpenImUser
+                    {
+                        UserID = userId,
+                        Nickname = nickname,
+                        FaceURL = faceURL
+                    }
+                }
+            });
+
+            var response = await _httpClient.SendAsync(request);
+            return await response.Content.ReadFromJsonAsync<OpenImResponse<object>>();
         }
 
         /// <summary>

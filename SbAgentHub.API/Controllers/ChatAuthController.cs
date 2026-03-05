@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using SbAgentHub.Models;
 using SbAgentHub.Models.Dto;
 using SbAgentHub.Services;
+using System;
 
 namespace SbAgentHub.API.Controllers;
 
@@ -14,11 +15,16 @@ public class ChatAuthController : Controller
 {
     private readonly ChatAuthService _service;
     private readonly OpenImMessageService _messageService;
+    private readonly QueueService _queueService;
+    private readonly VisitorFormService _visitorFormService;
 
-    public ChatAuthController(ChatAuthService service, OpenImMessageService messageService)
+    public ChatAuthController(ChatAuthService service, OpenImMessageService messageService,
+        QueueService queueService, VisitorFormService visitorFormService)
     {
         _service = service;
         _messageService = messageService;
+        _queueService = queueService;
+        _visitorFormService = visitorFormService;
     }
 
     /// <summary>
@@ -26,14 +32,22 @@ public class ChatAuthController : Controller
     /// </summary>
     [HttpPost, AllowAnonymous]
     public async Task<ResultData> VisitorAuth([FromBody] VisitorAuthRequest request)
-        => await _service.VisitorAuthAsync(request);
+    {
+        // 从请求头提取来源域名
+        request.RequestDomain = ExtractDomain();
+        request.IpAddress ??= HttpContext.Connection.RemoteIpAddress?.ToString();
+        request.UserAgent ??= Request.Headers["User-Agent"].ToString();
+        return await _service.VisitorAuthAsync(request);
+    }
 
     /// <summary>
     /// SDK 端获取 IM Token（FormData，匹配 openim-core-js SDK）
     /// </summary>
     [HttpPost, AllowAnonymous]
     public async Task<ResultData> GetImToken([FromForm] GetImTokenFormRequest request)
-        => await _service.GetImTokenForSdkAsync(request);
+        => await _service.GetImTokenForSdkAsync(request, ExtractDomain(),
+            HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers["User-Agent"].ToString());
 
     /// <summary>
     /// 刷新 OpenIM Token
@@ -104,5 +118,92 @@ public class ChatAuthController : Controller
         );
 
         return ResultData.Ok();
+    }
+
+    /// <summary>
+    /// 查询排队位置
+    /// </summary>
+    [HttpGet, AllowAnonymous]
+    public ResultData QueuePosition(string chatUserId)
+    {
+        if (string.IsNullOrEmpty(chatUserId))
+            return ResultData.No("chatUserId 不能为空");
+        var info = _queueService.GetPosition(chatUserId);
+        if (info == null)
+            return ResultData.Ok(new { isQueued = false });
+        return ResultData.Ok(new { isQueued = true, info.Position, info.TotalWaiting, info.EstimatedWaitMinutes });
+    }
+
+    /// <summary>
+    /// 取消排队
+    /// </summary>
+    [HttpPost, AllowAnonymous]
+    public ResultData CancelQueue([FromBody] CancelQueueRequest request)
+    {
+        if (string.IsNullOrEmpty(request?.ChatUserId))
+            return ResultData.No("chatUserId 不能为空");
+        _queueService.Cancel(request.ChatUserId);
+        return ResultData.Ok("已取消排队");
+    }
+
+    /// <summary>
+    /// 获取平台的表单配置（访客端）
+    /// </summary>
+    [HttpGet, AllowAnonymous]
+    public ResultData GetVisitorForm(string platformKey)
+    {
+        if (string.IsNullOrEmpty(platformKey))
+            return ResultData.No("platformKey 不能为空");
+
+        var platform = _service.GetPlatformByKey(platformKey);
+        if (platform == null)
+            return ResultData.No("平台不存在!");
+
+        var form = _visitorFormService.GetActiveForm(platform.OwnerId, platform.Id);
+        if (form == null)
+            return ResultData.Ok(new { hasForm = false });
+
+        return ResultData.Ok(new
+        {
+            hasForm = true,
+            formId = form.Id,
+            formName = form.FormName,
+            formFields = form.FormFields,
+            isRequired = form.IsRequired
+        });
+    }
+
+    /// <summary>
+    /// 提交访客表单（访客端）
+    /// </summary>
+    [HttpPost, AllowAnonymous]
+    public ResultData SubmitVisitorForm([FromBody] SubmitVisitorFormRequest request)
+    {
+        if (request == null || request.FormId <= 0)
+            return ResultData.No("参数无效!");
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
+        return _visitorFormService.SubmitForm(request.FormId, request.ChatUserId, request.FormData, ip);
+    }
+
+    /// <summary>
+    /// 从 Origin 或 Referer 请求头提取域名
+    /// </summary>
+    private string ExtractDomain()
+    {
+        // 优先 Origin
+        var origin = Request.Headers["Origin"].ToString();
+        if (!string.IsNullOrEmpty(origin))
+        {
+            try { return new Uri(origin).Host; } catch { }
+        }
+
+        // 其次 Referer
+        var referer = Request.Headers["Referer"].ToString();
+        if (!string.IsNullOrEmpty(referer))
+        {
+            try { return new Uri(referer).Host; } catch { }
+        }
+
+        return "";
     }
 }

@@ -25,10 +25,22 @@ namespace SbAgentHub.Models
         public string PlatformName { get; set; }
 
         /// <summary>
+        /// 平台Logo URL
+        /// </summary>
+        [Column(Name = "Logo", StringLength = 500)]
+        public string Logo { get; set; }
+
+        /// <summary>
         /// 平台类型
         /// </summary>
         [Column(Name = "PlatformType")]
         public PlatformType PlatformType { get; set; } = PlatformType.Web;
+
+        /// <summary>
+        /// 接入方式
+        /// </summary>
+        [Column(Name = "AccessType")]
+        public AccessType AccessType { get; set; } = AccessType.JS;
 
         /// <summary>
         /// 平台密钥（用于 Widget 接入认证）
@@ -37,10 +49,16 @@ namespace SbAgentHub.Models
         public string PlatformKey { get; set; }
 
         /// <summary>
-        /// 平台域名
+        /// 平台域名（兼容旧字段）
         /// </summary>
         [Column(Name = "Domain", StringLength = 200)]
         public string Domain { get; set; }
+
+        /// <summary>
+        /// 允许的域名列表(JSON数组，如 ["www.example.com","app.example.com"])
+        /// </summary>
+        [Column(Name = "AllowedDomains", DbType = "TEXT")]
+        public string AllowedDomains { get; set; }
 
         /// <summary>
         /// 是否启用

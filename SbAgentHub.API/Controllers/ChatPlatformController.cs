@@ -57,4 +57,10 @@ public class ChatPlatformController : Controller
     [HttpPost]
     public ResultData ToggleTakeover([FromForm] int id, [FromForm] int? adminId = null)
         => _service.ToggleTakeover(id, adminId);
+
+    /// <summary>
+    /// 获取接入代码/链接
+    /// </summary>
+    [HttpGet]
+    public ResultData AccessCode(int id) => _service.GetAccessCode(id);
 }

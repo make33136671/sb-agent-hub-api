@@ -266,14 +266,24 @@
     public class OpenIMConfig
     {
         /// <summary>
-        /// OpenIM Server HTTP API 地址
+        /// OpenIM Server HTTP API 地址（服务端连接用）
         /// </summary>
-        public string ApiUrl { get; set; } = "";
+        public string ImApiUrl { get; set; } = "";
 
         /// <summary>
-        /// OpenIM Server WebSocket 地址
+        /// OpenIM Server WebSocket 地址（服务端连接用）
         /// </summary>
-        public string WsUrl { get; set; } = "";
+        public string ImWsUrl { get; set; } = "";
+
+        /// <summary>
+        /// 客户端 IM HTTP API 地址（下发给前端/Widget，未配置时回退到 ImApiUrl）
+        /// </summary>
+        public string ClientApiUrl { get; set; } = "";
+
+        /// <summary>
+        /// 客户端 IM WebSocket 地址（下发给前端/Widget，未配置时回退到 ImWsUrl）
+        /// </summary>
+        public string ClientWsUrl { get; set; } = "";
 
         /// <summary>
         /// 管理员用户ID

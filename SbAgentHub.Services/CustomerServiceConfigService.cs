@@ -60,11 +60,14 @@ namespace SbAgentHub.Services
             existing.WorkTimeEnd = config.WorkTimeEnd;
             existing.EnableWorkTime = config.EnableWorkTime;
             existing.NonWorkTimeMessage = config.NonWorkTimeMessage;
+            existing.EnableQueue = config.EnableQueue;
+            existing.MaxConcurrentSessions = config.MaxConcurrentSessions;
 
             UpdateDiy.UpdateColumns(c => new
             {
                 c.AllocationRule, c.OfflineHandling, c.OfflineAutoReply,
-                c.WorkTimeStart, c.WorkTimeEnd, c.EnableWorkTime, c.NonWorkTimeMessage
+                c.WorkTimeStart, c.WorkTimeEnd, c.EnableWorkTime, c.NonWorkTimeMessage,
+                c.EnableQueue, c.MaxConcurrentSessions
             }).SetSource(existing).ExecuteAffrows();
 
             return ResultData.Ok("配置保存成功!");
@@ -96,6 +99,8 @@ namespace SbAgentHub.Services
                 WorkTimeStart = "09:00",
                 WorkTimeEnd = "18:00",
                 NonWorkTimeMessage = "当前为非工作时间，我们将在工作时间尽快回复您。",
+                EnableQueue = false,
+                MaxConcurrentSessions = 50,
                 CreateTime = DateTime.Now
             };
 
@@ -108,6 +113,13 @@ namespace SbAgentHub.Services
             var user = _httpContextAccessor.HttpContext.User;
             string userType = user.UserType();
             string role = user.Role();
+
+            // 超级管理员：返回第一个 Owner 的 Id（管理全局配置）
+            if (userType == "Admin")
+            {
+                var firstOwner = _fsql.Select<Member>().Where(c => c.Role == MemberRole.Owner && c.IsDeleted == false).OrderBy(c => c.Id).First();
+                return firstOwner?.Id ?? 0;
+            }
 
             if (userType == "Member" && role == "Owner")
                 return user.Id();

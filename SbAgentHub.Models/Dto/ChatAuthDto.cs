@@ -167,6 +167,7 @@ namespace SbAgentHub.Models.Dto
         public bool ShowReadStatus { get; set; } = false;
         public bool EnableSatisfactionRating { get; set; } = false;
         public bool EnableVisitorForm { get; set; } = false;
+        public bool EnableQueue { get; set; } = false;
     }
 
     /// <summary>

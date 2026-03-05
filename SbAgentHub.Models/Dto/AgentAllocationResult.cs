@@ -18,5 +18,10 @@ namespace SbAgentHub.Models.Dto
         /// 分配到的客服是否在线
         /// </summary>
         public bool AgentOnline { get; set; }
+
+        /// <summary>
+        /// 是否需要排队（并发会话超限时为 true）
+        /// </summary>
+        public bool NeedsQueue { get; set; }
     }
 }

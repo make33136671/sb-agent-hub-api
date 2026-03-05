@@ -61,6 +61,15 @@ namespace SbAgentHub.API.Extensions
             fsql.GlobalFilter.Apply<ChatUserLoginRecord>("IsDeleted", a => a.IsDeleted == false);
             fsql.GlobalFilter.Apply<ClientErrorLog>("IsDeleted", a => a.IsDeleted == false);
             fsql.GlobalFilter.Apply<UserPreferences>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<QuotaConfig>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<MemberQuota>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<QuotaUsage>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<FileRecord>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<VisitorForm>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<AutoReply>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<QuotaPackage>("IsDeleted", a => a.IsDeleted == false);
+            fsql.GlobalFilter.Apply<Order>("IsDeleted", a => a.IsDeleted == false);
+            // VisitorQueue, VisitorFormSubmission, SatisfactionRating 不需要软删除
             Log.Information("已应用全局软删除过滤");
 
             fsql.UseJsonMap();

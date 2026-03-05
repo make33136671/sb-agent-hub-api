@@ -6,7 +6,7 @@
 
 1. **后端 (agent-api)** — 通过 OpenIM Server REST API 管理用户注册、Token 获取、系统消息发送
 2. **管理端 (agent-admin)** — 客服工作台通过 JS SDK (`@openim/client-sdk`) 建立 WebSocket 连接，实时收发消息
-3. **Widget 端 (agent-widget-vue)** — 访客通过 WASM SDK 建立 WebSocket 连接，与客服聊天
+3. **Widget 端 (agent-widget-vue)** — 访客通过 JS SDK 建立 WebSocket 连接，与客服聊天
 
 ## 架构图
 
@@ -24,7 +24,7 @@
           │                 │        via @saibotianlong/openim-core
           │                 │
           │                 └─── agent-widget-vue (访客 Widget)
-          │                      └── @openim/wasm-client-sdk
+          │                      └── @saibotianlong/openim-core (JS SDK)
           │
           └─── agent-api (.NET 后端)
                ├── OpenImAuthService    (Token 管理)
@@ -148,7 +148,7 @@ MemberId → 查 Member 表 → OpenImUserId
 ### SDK 选择
 
 管理端使用 **JS SDK** (`@openim/client-sdk@^3.8.3`)，通过 `@saibotianlong/openim-core` 封装层调用。
-选择 JS SDK 而非 WASM SDK 的原因：客服系统在内网运行，无需离线缓存，JS SDK 更轻量、部署更简单。
+通过 `@saibotianlong/openim-core` 封装层调用，JS SDK 更轻量、部署更简单。
 
 ### 模块结构
 
@@ -282,15 +282,6 @@ Widget 打开
   → 连接成功，开始收发消息
 ```
 
-### WASM 资源
-
-Widget 需要两个 WASM 文件部署在宿主站点根目录：
-
-| 文件 | 来源 | 说明 |
-|------|------|------|
-| `openIM.wasm` | `@openim/wasm-client-sdk` | OpenIM 核心 WASM |
-| `sql-wasm.wasm` | `@openim/wasm-client-sdk` | SQLite WASM（本地消息缓存）|
-
 ### 事件监听
 
 ```typescript
@@ -350,7 +341,7 @@ Widget 端发送的系统消息（不在 UI 中展示）：
 
 ### Fetch 拦截器
 
-OpenIM WASM SDK 内部使用 `fetch` 调用 OpenIM API，部分响应中的数组字段可能为 `null`（SDK 期望 `[]`）。`services/openIM.ts` 中安装了全局 fetch 拦截器：
+OpenIM SDK 内部使用 `fetch` 调用 OpenIM API，部分响应中的数组字段可能为 `null`（SDK 期望 `[]`）。`services/openIM.ts` 中安装了全局 fetch 拦截器：
 
 ```typescript
 // 仅拦截发往 OpenIM apiAddr 的请求
@@ -441,10 +432,8 @@ createWidget('#chat-widget', {
 ## 注意事项
 
 1. **IM 地址服务端下发**：客户端不再需要配置 `apiAddr`/`wsAddr`，由 `GetImToken` / `GetAgentImToken` 响应中的 `imConfig` 字段自动下发。SDK 通过 `core.updateImAddrs()` 在登录前动态注入
-2. **WASM 文件部署**：`openIM.wasm` 和 `sql-wasm.wasm` 必须放在宿主站点根目录，且 MIME 类型为 `application/wasm`
-3. **跨域配置**：OpenIM Server 的 API 和 WebSocket 端口需配置 CORS
-4. **Token 有效期**：默认 1 小时，后端缓存 55 分钟，前端 5 分钟安全余量
-5. **SDK 类型兼容**：`@openim/wasm-client-sdk` 的 TypeScript 类型定义与项目自定义的 `Message` 类型不完全兼容，需使用 `as any` 断言
-6. **TypeScript 限制**：项目启用 `erasableSyntaxOnly`，不能使用 `enum`，改用 `as const` 对象 + 类型联合
-7. **Fetch 拦截器**：全局安装，仅影响 OpenIM API 请求，不影响其他 HTTP 请求
-8. **系统消息过滤**：`isSystemMessage()` 在消息列表中过滤系统类消息，确保用户不可见
+2. **跨域配置**：OpenIM Server 的 API 和 WebSocket 端口需配置 CORS
+3. **Token 有效期**：默认 1 小时，后端缓存 55 分钟，前端 5 分钟安全余量
+4. **TypeScript 限制**：项目启用 `erasableSyntaxOnly`，不能使用 `enum`，改用 `as const` 对象 + 类型联合
+5. **Fetch 拦截器**：全局安装，仅影响 OpenIM API 请求，不影响其他 HTTP 请求
+6. **系统消息过滤**：`isSystemMessage()` 在消息列表中过滤系统类消息，确保用户不可见

@@ -62,4 +62,17 @@ namespace SbAgentHub.Models
         AutoReply = 1,
         TransferOther = 2
     }
+
+    /// <summary>
+    /// 接入方式
+    /// </summary>
+    public enum AccessType
+    {
+        /// <summary>纯 JS 嵌入（IIFE script 标签）</summary>
+        JS = 0,
+        /// <summary>Vue 组件（npm 安装 + import）</summary>
+        Vue = 1,
+        /// <summary>独立聊天页面（URL 直接打开）</summary>
+        Chat = 2
+    }
 }

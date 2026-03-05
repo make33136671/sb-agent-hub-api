@@ -15,12 +15,14 @@ namespace SbAgentHub.Services
     {
         private readonly IFreeSql _fsql;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly QuotaService _quotaService;
 
         public ChatPlatformService(IFreeSql fsql, ILogger<ChatPlatformService> logger,
-            IHttpContextAccessor httpContextAccessor) : base(fsql, logger)
+            IHttpContextAccessor httpContextAccessor, QuotaService quotaService) : base(fsql, logger)
         {
             _fsql = fsql;
             _httpContextAccessor = httpContextAccessor;
+            _quotaService = quotaService;
         }
 
         /// <summary>
@@ -53,8 +55,8 @@ namespace SbAgentHub.Services
 
             var platforms = query.Count(out long dataCount).Page(page, pageSize).ToList(c => new
             {
-                c.Id, c.OwnerId, c.PlatformName, c.PlatformType, c.PlatformKey,
-                c.Domain, c.IsEnabled, c.WelcomeMessage, c.CreateTime,
+                c.Id, c.OwnerId, c.PlatformName, c.Logo, c.PlatformType, c.AccessType, c.PlatformKey,
+                c.Domain, c.AllowedDomains, c.IsEnabled, c.WelcomeMessage, c.CreateTime,
                 c.IsAdminTakeover, c.TakeoverAdminId
             });
 
@@ -71,9 +73,10 @@ namespace SbAgentHub.Services
 
             var data = platforms.Select(p => new
             {
-                p.Id, p.OwnerId, p.PlatformName, p.PlatformType, p.PlatformKey,
-                p.Domain, p.IsEnabled, p.WelcomeMessage, p.CreateTime,
+                p.Id, p.OwnerId, p.PlatformName, p.Logo, p.PlatformType, p.AccessType, p.PlatformKey,
+                p.Domain, p.AllowedDomains, p.IsEnabled, p.WelcomeMessage, p.CreateTime,
                 p.IsAdminTakeover, p.TakeoverAdminId,
+                AccessTypeName = GetAccessTypeName(p.AccessType),
                 OwnerName = p.OwnerId > 0 && ownerNames.ContainsKey(p.OwnerId) ? ownerNames[p.OwnerId] : "",
                 TakeoverAdminName = p.TakeoverAdminId.HasValue && adminNames.ContainsKey(p.TakeoverAdminId.Value)
                     ? adminNames[p.TakeoverAdminId.Value] : ""
@@ -100,6 +103,14 @@ namespace SbAgentHub.Services
             }
             // Admin 创建时：OwnerId 由前端传入（可为 0 表示暂不分配）
 
+            // 配额校验
+            if (platform.OwnerId > 0)
+            {
+                var quotaCheck = _quotaService.CheckQuota(platform.OwnerId, "max_platforms");
+                if (!quotaCheck.IsAvailable)
+                    return ResultData.No($"平台配额不足! 已使用 {quotaCheck.Used}/{quotaCheck.Limit}");
+            }
+
             // 自动生成 PlatformKey
             platform.PlatformKey = GeneratePlatformKey();
             platform.CreateTime = DateTime.Now;
@@ -109,8 +120,8 @@ namespace SbAgentHub.Services
 
             return ResultData.Ok("平台创建成功!", new
             {
-                platform.Id, platform.PlatformName, platform.PlatformKey,
-                platform.PlatformType, platform.OwnerId
+                platform.Id, platform.PlatformName, platform.Logo, platform.PlatformKey,
+                platform.PlatformType, platform.AccessType, platform.OwnerId
             });
         }
 
@@ -130,8 +141,11 @@ namespace SbAgentHub.Services
             string userType = user.UserType();
 
             existing.PlatformName = platform.PlatformName;
+            existing.Logo = platform.Logo;
             existing.PlatformType = platform.PlatformType;
+            existing.AccessType = platform.AccessType;
             existing.Domain = platform.Domain;
+            existing.AllowedDomains = platform.AllowedDomains;
             existing.WelcomeMessage = platform.WelcomeMessage;
 
             if (userType == "Admin")
@@ -143,8 +157,8 @@ namespace SbAgentHub.Services
 
             UpdateDiy.UpdateColumns(c => new
             {
-                c.PlatformName, c.PlatformType, c.Domain, c.WelcomeMessage,
-                c.OwnerId, c.IsAdminTakeover, c.TakeoverAdminId
+                c.PlatformName, c.Logo, c.PlatformType, c.AccessType, c.Domain, c.AllowedDomains,
+                c.WelcomeMessage, c.OwnerId, c.IsAdminTakeover, c.TakeoverAdminId
             }).SetSource(existing).ExecuteAffrows();
 
             return ResultData.Ok("平台更新成功!");
@@ -273,7 +287,79 @@ namespace SbAgentHub.Services
                 new { platform.IsAdminTakeover, platform.TakeoverAdminId });
         }
 
+        /// <summary>
+        /// 获取接入代码/链接
+        /// </summary>
+        public ResultData GetAccessCode(int id)
+        {
+            var platform = Select.Where(c => c.Id == id).First();
+            if (platform == null) return ResultData.No("平台不存在!");
+            if (!HasOwnership(platform)) return ResultData.No("无权操作此平台!");
+
+            var request = _httpContextAccessor.HttpContext?.Request;
+            string baseApiUrl = $"{request?.Scheme}://{request?.Host}";
+
+            var result = new
+            {
+                platform.Id,
+                platform.PlatformName,
+                platform.PlatformKey,
+                platform.AccessType,
+                AccessTypeName = GetAccessTypeName(platform.AccessType),
+                Code = GenerateAccessCode(platform, baseApiUrl)
+            };
+
+            return ResultData.Ok(result);
+        }
+
         #region Private Helpers
+
+        private string GenerateAccessCode(ChatPlatform platform, string baseApiUrl)
+        {
+            switch (platform.AccessType)
+            {
+                case AccessType.JS:
+                    return $@"<!-- SB Agent Hub 客服组件 -->
+<script>
+window.SbAgentHub = {{
+  platformKey: '{platform.PlatformKey}',
+  baseURL: '{baseApiUrl}'
+}};
+</script>
+<script src=""{baseApiUrl}/agent-widget.js""></script>";
+
+                case AccessType.Vue:
+                    return $@"// 1. 安装依赖
+npm install @saibotianlong/agent-widget
+
+// 2. 在组件中使用
+import {{ CustomerServiceWidget }} from '@saibotianlong/agent-widget'
+
+<CustomerServiceWidget
+  platformKey=""{platform.PlatformKey}""
+  :config=""{{
+    baseURL: '{baseApiUrl}'
+  }}""
+/>";
+
+                case AccessType.Chat:
+                    return $"{baseApiUrl}/chat?platformKey={platform.PlatformKey}";
+
+                default:
+                    return "";
+            }
+        }
+
+        private static string GetAccessTypeName(AccessType accessType)
+        {
+            return accessType switch
+            {
+                AccessType.JS => "JS 嵌入",
+                AccessType.Vue => "Vue 组件",
+                AccessType.Chat => "独立聊天页",
+                _ => "未知"
+            };
+        }
 
         private string GeneratePlatformKey()
         {

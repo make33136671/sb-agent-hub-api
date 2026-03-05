@@ -1,5 +1,6 @@
 using SbAgentHub.Core;
 using SbAgentHub.Core.Middleware;
+using SbAgentHub.Services.BackgroundJobs;
 using Serilog;
 using SbAgentHub.API.Extensions;
 using System.Text.Json.Serialization;
@@ -14,6 +15,9 @@ namespace SbAgentHub.API
             ConfigurationManager configuration = builder.Configuration;
 
             AppGlobal.AppSettings = configuration.Get<AppSettings>();
+
+            // 启动前归档旧日志
+            ArchiveOldLogs();
 
             // Serilog
             Log.Logger = new LoggerConfiguration()
@@ -32,6 +36,11 @@ namespace SbAgentHub.API
 
             builder.Services.AddCorsPolicy(configuration);
             builder.Services.AddSwaggerDoc();
+
+            // 定时任务
+            builder.Services.AddHostedService<MessageCleanupJob>();
+            builder.Services.AddHostedService<QueueCleanupJob>();
+            builder.Services.AddHostedService<QuotaExpirationJob>();
 
             builder.Services.AddHttpContextAccessor();
             builder.Services.AddControllersWithViews(options =>
@@ -64,6 +73,27 @@ namespace SbAgentHub.API
             app.MapControllers();
 
             app.Run();
+        }
+
+        /// <summary>
+        /// 将 logs 目录下的旧日志文件归档到以日期时间命名的子文件夹
+        /// </summary>
+        private static void ArchiveOldLogs()
+        {
+            var logsDir = Path.Combine(AppContext.BaseDirectory, "logs");
+            if (!Directory.Exists(logsDir)) return;
+
+            var logFiles = Directory.GetFiles(logsDir, "*.*", SearchOption.TopDirectoryOnly);
+            if (logFiles.Length == 0) return;
+
+            var archiveDir = Path.Combine(logsDir, DateTime.Now.ToString("yyyyMMdd_HHmmss"));
+            Directory.CreateDirectory(archiveDir);
+
+            foreach (var file in logFiles)
+            {
+                var fileName = Path.GetFileName(file);
+                File.Move(file, Path.Combine(archiveDir, fileName));
+            }
         }
     }
 }

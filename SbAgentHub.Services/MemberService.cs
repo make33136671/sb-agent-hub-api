@@ -1,7 +1,10 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using FreeSql;
 using SbAgentHub.Core.Attribute;
 using SbAgentHub.Core.Util;
 using SbAgentHub.Models;
+using System.Text.Json;
 
 namespace SbAgentHub.Services
 {
@@ -9,10 +12,13 @@ namespace SbAgentHub.Services
     public class MemberService : BaseCrudService<Member>
     {
         IFreeSql _fsql;
+        private readonly IConfiguration _configuration;
 
-        public MemberService(IFreeSql fsql, ILogger<MemberService> logger) : base(fsql, logger)
+        public MemberService(IFreeSql fsql, ILogger<MemberService> logger,
+            IConfiguration configuration) : base(fsql, logger)
         {
             _fsql = fsql;
+            _configuration = configuration;
         }
 
         public Member GetMemberById(int memberId)
@@ -70,6 +76,13 @@ namespace SbAgentHub.Services
 
             member.CreatedTime = DateTime.Now;
             member = Insert(member);
+
+            // 站长创建时自动分配试用套餐
+            if (member.Role == MemberRole.Owner)
+            {
+                AssignTrialPackage(member.Id);
+            }
+
             return ResultData.Ok("创建成功", member);
         }
 
@@ -115,6 +128,73 @@ namespace SbAgentHub.Services
             member.Status = member.Status == UserStatus.Active ? UserStatus.Banned : UserStatus.Active;
             UpdateDiy.UpdateColumns(c => c.Status).SetSource(member).ExecuteAffrows();
             return ResultData.Ok("状态切换成功", new { member.Status });
+        }
+
+        /// <summary>
+        /// 为新站长分配试用套餐
+        /// </summary>
+        private void AssignTrialPackage(int memberId)
+        {
+            try
+            {
+                int trialDays = int.TryParse(_configuration["Trial:Days"], out var d) ? d : 7;
+                string trialPackageKey = _configuration["Trial:PackageKey"] ?? "basic";
+
+                var package = _fsql.Select<QuotaPackage>()
+                    .Where(p => p.PackageKey == trialPackageKey && p.IsEnabled)
+                    .First();
+                if (package == null) return;
+
+                // 解析套餐配额
+                Dictionary<string, int> settings;
+                try
+                {
+                    settings = JsonSerializer.Deserialize<Dictionary<string, int>>(package.QuotaSettings)
+                        ?? new Dictionary<string, int>();
+                }
+                catch { return; }
+
+                var expiresAt = DateTime.Now.AddDays(trialDays);
+                var remark = $"试用套餐: {package.PackageName} ({trialDays}天)";
+
+                foreach (var kv in settings)
+                {
+                    _fsql.Insert(new MemberQuota
+                    {
+                        MemberId = memberId,
+                        QuotaKey = kv.Key,
+                        QuotaValue = kv.Value,
+                        GrantedByType = "System",
+                        ExpiresAt = expiresAt,
+                        Remark = remark,
+                        CreateTime = DateTime.Now,
+                        IsDeleted = false
+                    }).ExecuteAffrows();
+                }
+
+                // 创建试用订单记录
+                _fsql.Insert(new Order
+                {
+                    OrderNo = $"TRIAL{DateTime.Now:yyyyMMddHHmmss}{Random.Shared.Next(1000, 9999)}",
+                    MemberId = memberId,
+                    PackageId = package.Id,
+                    PackageName = package.PackageName,
+                    OrderType = Models.OrderType.NewPurchase,
+                    Amount = 0,
+                    Currency = "CNY",
+                    Status = OrderStatus.Paid,
+                    PaymentMethod = "trial",
+                    PaymentTime = DateTime.Now,
+                    EffectiveStartTime = DateTime.Now,
+                    EffectiveEndTime = expiresAt,
+                    Remark = remark,
+                    CreateTime = DateTime.Now
+                }).ExecuteAffrows();
+            }
+            catch
+            {
+                // 试用分配失败不影响创建
+            }
         }
     }
 }

@@ -61,6 +61,18 @@ namespace SbAgentHub.Models
         public string NonWorkTimeMessage { get; set; }
 
         /// <summary>
+        /// 是否启用排队功能（关闭后访客直接分配客服，无需排队）
+        /// </summary>
+        [Column(Name = "EnableQueue")]
+        public bool EnableQueue { get; set; } = false;
+
+        /// <summary>
+        /// 最大并发会话数（启用排队时生效）
+        /// </summary>
+        [Column(Name = "MaxConcurrentSessions")]
+        public int MaxConcurrentSessions { get; set; } = 50;
+
+        /// <summary>
         /// 创建时间
         /// </summary>
         [Column(Name = "CreateTime", DbType = "timestamp", InsertValueSql = "now()")]

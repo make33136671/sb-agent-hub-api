@@ -15,6 +15,8 @@ namespace SbAgentHub.Services
         private readonly IFreeSql _fsql;
         private readonly ILogger<AgentAllocationService> _logger;
         private readonly CustomerServiceConfigService _configService;
+        private readonly QuotaService _quotaService;
+        private readonly QueueService _queueService;
 
         // 轮询计数器（内存级别，重启后重置）
         private static int _roundRobinIndex = 0;
@@ -23,11 +25,15 @@ namespace SbAgentHub.Services
         public AgentAllocationService(
             IFreeSql fsql,
             ILogger<AgentAllocationService> logger,
-            CustomerServiceConfigService configService)
+            CustomerServiceConfigService configService,
+            QuotaService quotaService,
+            QueueService queueService)
         {
             _fsql = fsql;
             _logger = logger;
             _configService = configService;
+            _quotaService = quotaService;
+            _queueService = queueService;
         }
 
         /// <summary>
@@ -75,6 +81,26 @@ namespace SbAgentHub.Services
                     Success = false,
                     Message = config.NonWorkTimeMessage ?? "当前为非工作时间"
                 };
+            }
+
+            // 排队功能开关：关闭时跳过并发会话检查，直接分配
+            if (config.EnableQueue)
+            {
+                long currentOnline = _fsql.Select<ChatUser>()
+                    .Where(c => c.OwnerId == ownerId && c.OnlineStatus == OnlineStatus.Online)
+                    .Count();
+                if (currentOnline >= config.MaxConcurrentSessions)
+                {
+                    _logger.LogWarning("并发会话超限(排队开启): OwnerId={OwnerId}, Current={Current}, Max={Max}",
+                        ownerId, currentOnline, config.MaxConcurrentSessions);
+
+                    return new AgentAllocationResult
+                    {
+                        Success = false,
+                        NeedsQueue = true,
+                        Message = "当前客服繁忙，请排队等候。"
+                    };
+                }
             }
 
             // 获取可用客服列表（在线 + 未满载）

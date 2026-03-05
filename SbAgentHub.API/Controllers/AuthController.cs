@@ -77,8 +77,8 @@ public class AuthController : Controller
     /// 获取客服 OpenIM Token（Member 调用）
     /// </summary>
     [HttpGet]
-    public async Task<ResultData> GetAgentImToken(int memberId)
-        => await _chatAuthService.GetAgentImTokenAsync(memberId);
+    public async Task<ResultData> GetAgentImToken(int memberId, bool forceNew = false)
+        => await _chatAuthService.GetAgentImTokenAsync(memberId, forceNew);
 
     /// <summary>
     /// 上传文件

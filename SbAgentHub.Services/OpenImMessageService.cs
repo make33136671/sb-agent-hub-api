@@ -23,7 +23,7 @@ namespace SbAgentHub.Services
             _authService = authService;
 
             var config = AppGlobal.AppSettings?.OpenIM;
-            _apiUrl = config?.ApiUrl?.TrimEnd('/') ?? "";
+            _apiUrl = config?.ImApiUrl?.TrimEnd('/') ?? "";
 
             _httpClient = new HttpClient();
             if (!string.IsNullOrEmpty(_apiUrl))

@@ -1,4 +1,5 @@
 using FreeSql;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using SbAgentHub.Core;
 using SbAgentHub.Core.Attribute;
@@ -26,6 +27,8 @@ namespace SbAgentHub.Services
         private readonly QueueService _queueService;
         private readonly QuotaService _quotaService;
         private readonly VisitorFormService _visitorFormService;
+        private readonly CustomerServiceConfigService _configService;
+        private readonly IHttpContextAccessor _httpContextAccessor;
 
         public ChatAuthService(
             IFreeSql fsql,
@@ -39,7 +42,9 @@ namespace SbAgentHub.Services
             AccessViolationService violationService,
             QueueService queueService,
             QuotaService quotaService,
-            VisitorFormService visitorFormService)
+            VisitorFormService visitorFormService,
+            CustomerServiceConfigService configService,
+            IHttpContextAccessor httpContextAccessor)
         {
             _fsql = fsql;
             _logger = logger;
@@ -53,6 +58,8 @@ namespace SbAgentHub.Services
             _queueService = queueService;
             _quotaService = quotaService;
             _visitorFormService = visitorFormService;
+            _configService = configService;
+            _httpContextAccessor = httpContextAccessor;
         }
 
         /// <summary>
@@ -160,8 +167,41 @@ namespace SbAgentHub.Services
                 chatUser.Nickname ?? "访客",
                 chatUser.Avatar ?? "");
 
-            // 4. 分配客服
-            var allocation = _allocationService.AllocateAgent(platform.OwnerId, platform.Id);
+            // 4. 分配客服（已有分配则直接复用，避免排队后接入又重新分配）
+            AgentAllocationResult allocation;
+
+            if (chatUser.AssignedAgentId.HasValue && chatUser.AssignedAgentId.Value > 0)
+            {
+                // 已有分配的客服（如从排队中接入），直接复用
+                var existingAgent = _fsql.Select<Member>()
+                    .Where(c => c.Id == chatUser.AssignedAgentId.Value && c.Status == UserStatus.Active)
+                    .First();
+
+                if (existingAgent != null)
+                {
+                    allocation = new AgentAllocationResult
+                    {
+                        Success = true,
+                        AgentOnline = existingAgent.OnlineStatus != OnlineStatus.Offline,
+                        AgentId = existingAgent.Id,
+                        AgentName = existingAgent.Name ?? existingAgent.Username,
+                        AgentAvatar = existingAgent.Avatar,
+                        OpenImUserId = existingAgent.OpenImUserId,
+                        WelcomeMessage = existingAgent.WelcomeMessage
+                    };
+                    _logger.LogInformation("复用已分配客服: ChatUserId={ChatUserId}, AgentId={AgentId}",
+                        chatUser.ChatUserId, existingAgent.Id);
+                }
+                else
+                {
+                    // 已分配的客服不存在或已禁用，重新分配
+                    allocation = _allocationService.AllocateAgent(platform.OwnerId, platform.Id);
+                }
+            }
+            else
+            {
+                allocation = _allocationService.AllocateAgent(platform.OwnerId, platform.Id);
+            }
 
             // 4.1 如果需要排队（并发会话超限）
             if (!allocation.Success && allocation.NeedsQueue)
@@ -327,7 +367,10 @@ namespace SbAgentHub.Services
 
             var tokenData = await _openImAuthService.GetUserTokenAsync(chatUserId);
             if (tokenData == null)
+            {
+                _logger.LogWarning("RefreshImToken 获取 Token 失败: ChatUserId={ChatUserId}", chatUserId);
                 return ResultData.No("获取 Token 失败!");
+            }
 
             return ResultData.Ok(new ImTokenResponse
             {
@@ -339,7 +382,7 @@ namespace SbAgentHub.Services
         /// <summary>
         /// 获取客服的 OpenIM Token（管理端调用）
         /// </summary>
-        public async Task<ResultData> GetAgentImTokenAsync(int memberId)
+        public async Task<ResultData> GetAgentImTokenAsync(int memberId, bool forceNew = false)
         {
             var member = _fsql.Select<Member>().Where(c => c.Id == memberId).First();
             if (member == null)
@@ -348,17 +391,26 @@ namespace SbAgentHub.Services
             string imUserId = member.OpenImUserId;
             if (string.IsNullOrEmpty(imUserId))
             {
-                // 自动生成并注册
                 imUserId = OpenImIdGenerator.GenerateAgentId(memberId);
-                await _openImUserService.RegisterUserAsync(imUserId, member.Name ?? member.Username, member.Avatar ?? "");
-
                 member.OpenImUserId = imUserId;
                 _fsql.Update<Member>().SetSource(member).UpdateColumns(c => c.OpenImUserId).ExecuteAffrows();
             }
 
+            // 确保用户已注册到 OpenIM（幂等操作，已存在不会报错）
+            await _openImUserService.RegisterUserAsync(imUserId, member.Name ?? member.Username, member.Avatar ?? "");
+
+            // 清除缓存登录：先踢掉旧会话
+            if (forceNew)
+            {
+                await _openImAuthService.ForceLogoutAsync(imUserId);
+            }
+
             var tokenData = await _openImAuthService.GetUserTokenAsync(imUserId);
             if (tokenData == null)
+            {
+                _logger.LogWarning("GetAgentImToken 获取 Token 失败: MemberId={MemberId}, ImUserId={ImUserId}", memberId, imUserId);
                 return ResultData.No("获取 Token 失败!");
+            }
 
             var imConfig = BuildImConfig();
             return ResultData.Ok(new
@@ -389,7 +441,10 @@ namespace SbAgentHub.Services
             // 1. 重新获取 OpenIM Token
             var tokenData = await _openImAuthService.GetUserTokenAsync(chatUser.ChatUserId);
             if (tokenData == null)
+            {
+                _logger.LogWarning("RefreshSession 获取 Token 失败: ChatUserId={ChatUserId}", chatUser.ChatUserId);
                 return ResultData.No("获取 Token 失败!");
+            }
 
             // 2. 查找平台信息用于重新分配
             ChatPlatform platform = null;
@@ -479,11 +534,37 @@ namespace SbAgentHub.Services
         private SdkImConfig BuildImConfig()
         {
             var config = AppGlobal.AppSettings?.OpenIM;
+            var clientApi = !string.IsNullOrEmpty(config?.ClientApiUrl) ? config.ClientApiUrl : config?.ImApiUrl ?? "";
+            var clientWs = !string.IsNullOrEmpty(config?.ClientWsUrl) ? config.ClientWsUrl : config?.ImWsUrl ?? "";
+
+            // 相对地址自动拼接当前请求域名
+            if (!string.IsNullOrEmpty(clientApi) && clientApi.StartsWith('/'))
+            {
+                var baseUrl = GetRequestBaseUrl();
+                clientApi = baseUrl + clientApi;
+            }
+            if (!string.IsNullOrEmpty(clientWs) && clientWs.StartsWith('/'))
+            {
+                var baseUrl = GetRequestBaseUrl();
+                var wsScheme = baseUrl.StartsWith("https") ? "wss" : "ws";
+                clientWs = wsScheme + baseUrl.Substring(baseUrl.IndexOf("://")) + clientWs;
+            }
+
             return new SdkImConfig
             {
-                ApiUrl = config?.ApiUrl ?? "",
-                WsUrl = config?.WsUrl ?? ""
+                ApiUrl = clientApi,
+                WsUrl = clientWs
             };
+        }
+
+        /// <summary>
+        /// 获取当前请求的基础 URL（scheme://host）
+        /// </summary>
+        private string GetRequestBaseUrl()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            if (context == null) return "";
+            return $"{context.Request.Scheme}://{context.Request.Host}";
         }
 
         /// <summary>
@@ -492,10 +573,12 @@ namespace SbAgentHub.Services
         private SdkFeatureFlags BuildFeatureFlags(int ownerId)
         {
             if (ownerId <= 0) return new SdkFeatureFlags();
+            var csConfig = _configService.GetEffectiveConfig(ownerId);
             return new SdkFeatureFlags
             {
                 EnableSatisfactionRating = _quotaService.CheckFeature(ownerId, "feature_satisfaction"),
                 EnableVisitorForm = _quotaService.CheckFeature(ownerId, "feature_visitor_form"),
+                EnableQueue = csConfig.EnableQueue,
             };
         }
 
