@@ -1,7 +1,9 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using FreeSql;
 using SbAgentHub.Core.Attribute;
+using SbAgentHub.Core.Expand;
 using SbAgentHub.Core.Util;
 using SbAgentHub.Models;
 using System.Text.Json;
@@ -12,12 +14,15 @@ namespace SbAgentHub.Services
     public class MemberService : BaseCrudService<Member>
     {
         IFreeSql _fsql;
+        private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IConfiguration _configuration;
 
         public MemberService(IFreeSql fsql, ILogger<MemberService> logger,
+            IHttpContextAccessor httpContextAccessor,
             IConfiguration configuration) : base(fsql, logger)
         {
             _fsql = fsql;
+            _httpContextAccessor = httpContextAccessor;
             _configuration = configuration;
         }
 
@@ -30,6 +35,22 @@ namespace SbAgentHub.Services
             MemberRole? role = null, int? ownerId = null,
             string field = "", string order = "", int page = 1, int pageSize = 20)
         {
+            var user = _httpContextAccessor.HttpContext?.User;
+            string userType = user?.UserType() ?? "";
+
+            // Member 用户强制按 ownerId 过滤，防止跨站长查看
+            if (userType == "Member")
+            {
+                string userRole = user!.Role();
+                if (userRole == "Owner")
+                    ownerId = user.Id();
+                else if (userRole == "Agent")
+                {
+                    var agent = Select.Where(c => c.Id == user.Id()).First();
+                    ownerId = agent?.OwnerId ?? 0;
+                }
+            }
+
             var query = Select;
             query = query.WhereIf(id.HasValue, c => c.Id == id);
             query = query.WhereIf(!string.IsNullOrEmpty(keyword),

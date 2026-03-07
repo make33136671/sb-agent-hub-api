@@ -333,9 +333,9 @@ namespace SbAgentHub.Services
 
                 if (role == "Agent")
                 {
-                    // Agent 只能看工作台
+                    // Agent 看工作台 + 个人中心
                     menus = _fsql.Select<Menu>()
-                        .Where(m => m.Path.StartsWith("/workbench"))
+                        .Where(m => m.Path.StartsWith("/workbench") || m.Path == "/profile")
                         .OrderBy(m => m.OrderNo)
                         .ToList();
                 }

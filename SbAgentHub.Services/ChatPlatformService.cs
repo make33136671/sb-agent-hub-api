@@ -16,13 +16,16 @@ namespace SbAgentHub.Services
         private readonly IFreeSql _fsql;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly QuotaService _quotaService;
+        private readonly PendingDomainService _pendingDomainService;
 
         public ChatPlatformService(IFreeSql fsql, ILogger<ChatPlatformService> logger,
-            IHttpContextAccessor httpContextAccessor, QuotaService quotaService) : base(fsql, logger)
+            IHttpContextAccessor httpContextAccessor, QuotaService quotaService,
+            PendingDomainService pendingDomainService) : base(fsql, logger)
         {
             _fsql = fsql;
             _httpContextAccessor = httpContextAccessor;
             _quotaService = quotaService;
+            _pendingDomainService = pendingDomainService;
         }
 
         /// <summary>
@@ -71,6 +74,18 @@ namespace SbAgentHub.Services
                 ? _fsql.Select<Admin>().Where(a => adminIds.Contains(a.Id)).ToDictionary(a => a.Id, a => a.Name ?? a.Username)
                 : new Dictionary<int, string>();
 
+            // 批量查询待审核域名数量
+            var allPlatformIds = platforms.Select(p => p.Id).ToList();
+            var pendingCounts = new Dictionary<int, int>();
+            if (allPlatformIds.Any())
+            {
+                var pendingList = _fsql.Select<PendingDomain>()
+                    .Where(pd => allPlatformIds.Contains(pd.PlatformId) && pd.Status == PendingDomainStatus.Pending)
+                    .ToList(pd => pd.PlatformId);
+                foreach (var pid in pendingList)
+                    pendingCounts[pid] = pendingCounts.GetValueOrDefault(pid) + 1;
+            }
+
             var data = platforms.Select(p => new
             {
                 p.Id, p.OwnerId, p.PlatformName, p.Logo, p.PlatformType, p.AccessType, p.PlatformKey,
@@ -79,7 +94,8 @@ namespace SbAgentHub.Services
                 AccessTypeName = GetAccessTypeName(p.AccessType),
                 OwnerName = p.OwnerId > 0 && ownerNames.ContainsKey(p.OwnerId) ? ownerNames[p.OwnerId] : "",
                 TakeoverAdminName = p.TakeoverAdminId.HasValue && adminNames.ContainsKey(p.TakeoverAdminId.Value)
-                    ? adminNames[p.TakeoverAdminId.Value] : ""
+                    ? adminNames[p.TakeoverAdminId.Value] : "",
+                PendingDomainCount = pendingCounts.GetValueOrDefault(p.Id)
             });
 
             return ResultPage.Ok(data, dataCount, page, pageSize, "数据查询成功");
@@ -110,6 +126,10 @@ namespace SbAgentHub.Services
                 if (!quotaCheck.IsAvailable)
                     return ResultData.No($"平台配额不足! 已使用 {quotaCheck.Used}/{quotaCheck.Limit}");
             }
+
+            // 自动格式化域名
+            platform.Domain = PendingDomainService.NormalizeDomain(platform.Domain);
+            platform.AllowedDomains = PendingDomainService.FormatDomains(platform.AllowedDomains);
 
             // 自动生成 PlatformKey
             platform.PlatformKey = GeneratePlatformKey();
@@ -144,8 +164,8 @@ namespace SbAgentHub.Services
             existing.Logo = platform.Logo;
             existing.PlatformType = platform.PlatformType;
             existing.AccessType = platform.AccessType;
-            existing.Domain = platform.Domain;
-            existing.AllowedDomains = platform.AllowedDomains;
+            existing.Domain = PendingDomainService.NormalizeDomain(platform.Domain);
+            existing.AllowedDomains = PendingDomainService.FormatDomains(platform.AllowedDomains);
             existing.WelcomeMessage = platform.WelcomeMessage;
 
             if (userType == "Admin")

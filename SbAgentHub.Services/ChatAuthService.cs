@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using SbAgentHub.Core;
 using SbAgentHub.Core.Attribute;
+using SbAgentHub.Core.Expand;
 using SbAgentHub.Core.Util;
 using SbAgentHub.Models;
 using SbAgentHub.Models.Dto;
@@ -24,6 +25,7 @@ namespace SbAgentHub.Services
         private readonly OpenImAuthService _openImAuthService;
         private readonly OpenImMessageService _openImMessageService;
         private readonly AccessViolationService _violationService;
+        private readonly PendingDomainService _pendingDomainService;
         private readonly QueueService _queueService;
         private readonly QuotaService _quotaService;
         private readonly VisitorFormService _visitorFormService;
@@ -40,6 +42,7 @@ namespace SbAgentHub.Services
             OpenImAuthService openImAuthService,
             OpenImMessageService openImMessageService,
             AccessViolationService violationService,
+            PendingDomainService pendingDomainService,
             QueueService queueService,
             QuotaService quotaService,
             VisitorFormService visitorFormService,
@@ -55,6 +58,7 @@ namespace SbAgentHub.Services
             _openImAuthService = openImAuthService;
             _openImMessageService = openImMessageService;
             _violationService = violationService;
+            _pendingDomainService = pendingDomainService;
             _queueService = queueService;
             _quotaService = quotaService;
             _visitorFormService = visitorFormService;
@@ -185,7 +189,7 @@ namespace SbAgentHub.Services
                         AgentOnline = existingAgent.OnlineStatus != OnlineStatus.Offline,
                         AgentId = existingAgent.Id,
                         AgentName = existingAgent.Name ?? existingAgent.Username,
-                        AgentAvatar = existingAgent.Avatar,
+                        AgentAvatar = existingAgent.Avatar.ToAbsoluteUrl(_httpContextAccessor.HttpContext),
                         OpenImUserId = existingAgent.OpenImUserId,
                         WelcomeMessage = existingAgent.WelcomeMessage
                     };
@@ -264,7 +268,7 @@ namespace SbAgentHub.Services
                 Avatar = chatUser.Avatar,
                 AgentId = allocation.AgentId,
                 AgentName = allocation.AgentName,
-                AgentAvatar = allocation.AgentAvatar,
+                AgentAvatar = allocation.AgentAvatar.ToAbsoluteUrl(_httpContextAccessor.HttpContext),
                 AgentImUserId = allocation.OpenImUserId,
                 AgentOnline = allocation.AgentOnline,
                 OfflineMessage = !allocation.AgentOnline ? allocation.Message : null,
@@ -324,7 +328,7 @@ namespace SbAgentHub.Services
                 {
                     AgentUserId = authResponse.AgentImUserId,
                     Nickname = authResponse.AgentName ?? "客服",
-                    Avatar = authResponse.AgentAvatar ?? "",
+                    Avatar = authResponse.AgentAvatar.ToAbsoluteUrl(_httpContextAccessor.HttpContext),
                     OnlineStatus = authResponse.AgentOnline ? 1 : 0,
                     IsOnline = authResponse.AgentOnline,
                     WelcomeMessage = authResponse.WelcomeMessage,
@@ -567,6 +571,7 @@ namespace SbAgentHub.Services
             return $"{context.Request.Scheme}://{context.Request.Host}";
         }
 
+
         /// <summary>
         /// 构建功能开关
         /// </summary>
@@ -632,6 +637,10 @@ namespace SbAgentHub.Services
                     _violationService.Log(platform.Id, platform.PlatformKey, platform.OwnerId,
                         request.RequestDomain, source, expectedSource,
                         "domain_mismatch", request.IpAddress, request.UserAgent);
+
+                    // 将未知域名加入待审核列表
+                    _pendingDomainService.AddOrUpdate(platform.Id, platform.OwnerId,
+                        request.RequestDomain, request.IpAddress, request.UserAgent);
 
                     _logger.LogWarning("域名不匹配: PlatformKey={PlatformKey}, Domain={Domain}",
                         platform.PlatformKey, request.RequestDomain);

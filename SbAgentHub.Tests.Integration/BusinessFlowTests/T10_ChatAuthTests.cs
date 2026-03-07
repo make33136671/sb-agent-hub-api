@@ -45,11 +45,17 @@ namespace SbAgentHub.Tests.Integration.BusinessFlowTests
                 new TestOutputLogger<QuotaService>(output),
                 null!);
 
+            var pendingDomainService = new PendingDomainService(
+                _fsql,
+                new TestOutputLogger<PendingDomainService>(output),
+                null!);
+
             var platformService = new ChatPlatformService(
                 _fsql,
                 new TestOutputLogger<ChatPlatformService>(output),
                 null!, // IHttpContextAccessor — 测试中不依赖
-                quotaService);
+                quotaService,
+                pendingDomainService);
 
             var chatUserService = new ChatUserService(
                 _fsql,
@@ -89,6 +95,7 @@ namespace SbAgentHub.Tests.Integration.BusinessFlowTests
                 authService,
                 messageService,
                 violationService,
+                pendingDomainService,
                 queueService,
                 quotaService,
                 visitorFormService,

@@ -171,6 +171,32 @@ All admin endpoints require `JwtAdmin` auth (Bearer token) unless noted. Respons
 | enableQueue | bool | false | 是否启用排队功能 |
 | maxConcurrentSessions | int | 50 | 最大并发会话数（排队时生效）|
 
+## PendingDomainController `/admin/PendingDomain/[action]`
+
+| Method | Action | Params | Note |
+|--------|--------|--------|------|
+| GET | List | query: `platformId`(optional), `field`, `order`, `page`, `pageSize` | 待审核域名列表（Admin 看全部，Owner 只看自己的） |
+| GET | ListByPlatform | query: `platformId` | 指定平台的待审核域名 |
+| POST | Approve | form: `id` | 批准域名（自动加入平台白名单） |
+| POST | ApproveBatch | form: `ids` | 批量批准 |
+| POST | Reject | form: `id` | 拒绝域名 |
+| POST | RejectBatch | form: `ids` | 批量拒绝 |
+
+**PendingDomain 字段：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| platformId | int | 所属平台 |
+| ownerId | int | 所属站长 |
+| domain | string | 请求来源域名 |
+| requestCount | int | 请求次数 |
+| lastIpAddress | string | 最近请求 IP |
+| status | int | 0=待审核 1=已批准 2=已拒绝 |
+| firstSeenTime | DateTime | 首次出现时间 |
+| lastSeenTime | DateTime | 最后出现时间 |
+
+**触发机制：** 当 ChatAuth 域名校验不匹配时，自动记录到 PendingDomain 表。管理员可在平台编辑页面审核并一键加入白名单。
+
 ## ApiController `/api/[action]` (JwtApi)
 
 | Method | Action | Params | Note |
