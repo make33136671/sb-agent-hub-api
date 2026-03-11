@@ -67,6 +67,12 @@ namespace SbAgentHub.Models
         public int? AssignedAgentId { get; set; }
 
         /// <summary>
+        /// OpenIM 群组 ID（所有会话统一使用群聊）
+        /// </summary>
+        [Column(Name = "GroupId", StringLength = 128)]
+        public string GroupId { get; set; }
+
+        /// <summary>
         /// 客户端唯一标识
         /// </summary>
         [Column(Name = "ClientId", StringLength = 64)]

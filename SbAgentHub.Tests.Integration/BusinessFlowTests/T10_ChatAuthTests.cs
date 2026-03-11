@@ -85,6 +85,10 @@ namespace SbAgentHub.Tests.Integration.BusinessFlowTests
 
             var visitorFormService = new VisitorFormService(_fsql, null!, quotaService);
 
+            var groupService = new OpenImGroupService(
+                new TestOutputLogger<OpenImGroupService>(output),
+                authService);
+
             _chatAuthService = new ChatAuthService(
                 _fsql,
                 new TestOutputLogger<ChatAuthService>(output),
@@ -94,6 +98,7 @@ namespace SbAgentHub.Tests.Integration.BusinessFlowTests
                 userService,
                 authService,
                 messageService,
+                groupService,
                 violationService,
                 pendingDomainService,
                 queueService,

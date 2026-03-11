@@ -60,6 +60,7 @@ namespace SbAgentHub.Services
             existing.WorkTimeEnd = config.WorkTimeEnd;
             existing.EnableWorkTime = config.EnableWorkTime;
             existing.NonWorkTimeMessage = config.NonWorkTimeMessage;
+            existing.EnableBroadcast = config.EnableBroadcast;
             existing.EnableQueue = config.EnableQueue;
             existing.MaxConcurrentSessions = config.MaxConcurrentSessions;
 
@@ -67,7 +68,7 @@ namespace SbAgentHub.Services
             {
                 c.AllocationRule, c.OfflineHandling, c.OfflineAutoReply,
                 c.WorkTimeStart, c.WorkTimeEnd, c.EnableWorkTime, c.NonWorkTimeMessage,
-                c.EnableQueue, c.MaxConcurrentSessions
+                c.EnableBroadcast, c.EnableQueue, c.MaxConcurrentSessions
             }).SetSource(existing).ExecuteAffrows();
 
             return ResultData.Ok("配置保存成功!");

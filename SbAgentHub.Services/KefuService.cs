@@ -18,15 +18,21 @@ namespace SbAgentHub.Services
         private readonly ILogger<KefuService> _logger;
         private readonly QueueService _queueService;
         private readonly OpenImUserService _openImUserService;
+        private readonly OpenImGroupService _openImGroupService;
+        private readonly CustomerServiceConfigService _configService;
 
         public KefuService(IFreeSql fsql, IHttpContextAccessor httpContextAccessor,
-            ILogger<KefuService> logger, QueueService queueService, OpenImUserService openImUserService)
+            ILogger<KefuService> logger, QueueService queueService,
+            OpenImUserService openImUserService, OpenImGroupService openImGroupService,
+            CustomerServiceConfigService configService)
         {
             _fsql = fsql;
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
             _queueService = queueService;
             _openImUserService = openImUserService;
+            _openImGroupService = openImGroupService;
+            _configService = configService;
         }
 
         /// <summary>
@@ -37,8 +43,24 @@ namespace SbAgentHub.Services
             int agentId = _httpContextAccessor.HttpContext.User.Id();
             if (agentId <= 0) return ResultData.No("授权失效!");
 
-            var query = _fsql.Select<ChatUser>()
-                .Where(c => c.AssignedAgentId == agentId && !c.IsDeleted);
+            // 获取 ownerId 和广播配置
+            var member = _fsql.Select<Member>().Where(c => c.Id == agentId).First();
+            int ownerId = member?.Role == MemberRole.Owner ? member.Id : (member?.OwnerId ?? 0);
+            var csConfig = _configService.GetEffectiveConfig(ownerId);
+
+            ISelect<ChatUser> query;
+            if (csConfig.EnableBroadcast)
+            {
+                // 广播模式：返回该 owner 下所有活跃访客
+                query = _fsql.Select<ChatUser>()
+                    .Where(c => c.OwnerId == ownerId && !c.IsDeleted);
+            }
+            else
+            {
+                // 普通模式：只返回分配给自己的访客
+                query = _fsql.Select<ChatUser>()
+                    .Where(c => c.AssignedAgentId == agentId && !c.IsDeleted);
+            }
 
             query = query.WhereIf(!string.IsNullOrEmpty(keyword),
                 c => c.Nickname.Contains(keyword) || c.NicknameRemark.Contains(keyword) || c.ChatUserId.Contains(keyword));
@@ -49,7 +71,7 @@ namespace SbAgentHub.Services
                 .ToList(c => new
                 {
                     c.Id, c.ChatUserId, c.Nickname, c.Avatar, c.NicknameRemark,
-                    c.OnlineStatus, c.LastActiveTime, c.UserType, c.Remark
+                    c.OnlineStatus, c.LastActiveTime, c.UserType, c.Remark, c.GroupId
                 });
 
             // 通过 OpenIM 查询真实在线状态
@@ -61,7 +83,7 @@ namespace SbAgentHub.Services
                 d.Id, d.ChatUserId, d.Nickname, d.Avatar, d.NicknameRemark,
                 OnlineStatus = onlineMap.TryGetValue(d.ChatUserId, out var isOnline) && isOnline
                     ? OnlineStatus.Online : OnlineStatus.Offline,
-                d.LastActiveTime, d.UserType, d.Remark
+                d.LastActiveTime, d.UserType, d.Remark, d.GroupId
             }).ToList();
 
             return ResultPage.Ok(data, dataCount, page, pageSize, "数据查询成功");
@@ -75,6 +97,9 @@ namespace SbAgentHub.Services
             int agentId = _httpContextAccessor.HttpContext.User.Id();
             if (agentId <= 0) return ResultData.No("授权失效!");
 
+            var member = _fsql.Select<Member>().Where(c => c.Id == agentId).First();
+            if (member == null) return ResultData.No("用户不存在!");
+
             _fsql.Update<Member>()
                 .Where(c => c.Id == agentId)
                 .Set(c => c.OnlineStatus, status)
@@ -83,7 +108,59 @@ namespace SbAgentHub.Services
 
             _logger.LogInformation("客服状态更新: AgentId={AgentId}, Status={Status}", agentId, status);
 
+            // 广播模式下：上线/下线自动管理群组成员
+            int ownerId = member.Role == MemberRole.Owner ? member.Id : (member.OwnerId ?? 0);
+            var csConfig = _configService.GetEffectiveConfig(ownerId);
+            if (csConfig.EnableBroadcast && !string.IsNullOrEmpty(member.OpenImUserId))
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await ManageBroadcastGroupMembershipAsync(member, ownerId, status != OnlineStatus.Offline);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "广播模式群组成员管理异常: AgentId={AgentId}", agentId);
+                    }
+                });
+            }
+
             return ResultData.Ok("状态更新成功!", new { status });
+        }
+
+        /// <summary>
+        /// 广播模式：客服上线时加入所有活跃群组，下线时移出（主客服除外）
+        /// </summary>
+        private async Task ManageBroadcastGroupMembershipAsync(Member agent, int ownerId, bool isOnline)
+        {
+            // 查询该 owner 下所有有 GroupId 的活跃访客
+            var activeChats = _fsql.Select<ChatUser>()
+                .Where(c => c.OwnerId == ownerId
+                    && !string.IsNullOrEmpty(c.GroupId)
+                    && !c.IsDeleted)
+                .ToList(c => new { c.GroupId, c.AssignedAgentId });
+
+            if (activeChats.Count == 0) return;
+
+            foreach (var chat in activeChats)
+            {
+                // 主客服始终在群里，不移出
+                if (!isOnline && chat.AssignedAgentId == agent.Id)
+                    continue;
+
+                if (isOnline)
+                {
+                    await _openImGroupService.InviteToGroupAsync(chat.GroupId, new List<string> { agent.OpenImUserId });
+                }
+                else
+                {
+                    await _openImGroupService.KickFromGroupAsync(chat.GroupId, new List<string> { agent.OpenImUserId });
+                }
+            }
+
+            _logger.LogInformation("广播模式群组成员管理完成: AgentId={AgentId}, Online={Online}, Groups={Count}",
+                agent.Id, isOnline, activeChats.Count);
         }
 
         /// <summary>

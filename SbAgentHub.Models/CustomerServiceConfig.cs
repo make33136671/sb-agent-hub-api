@@ -61,6 +61,12 @@ namespace SbAgentHub.Models
         public string NonWorkTimeMessage { get; set; }
 
         /// <summary>
+        /// 是否启用广播接待模式（开启后新访客消息广播给所有在线客服）
+        /// </summary>
+        [Column(Name = "EnableBroadcast")]
+        public bool EnableBroadcast { get; set; } = false;
+
+        /// <summary>
         /// 是否启用排队功能（关闭后访客直接分配客服，无需排队）
         /// </summary>
         [Column(Name = "EnableQueue")]

@@ -24,6 +24,7 @@ namespace SbAgentHub.Services
         private readonly OpenImUserService _openImUserService;
         private readonly OpenImAuthService _openImAuthService;
         private readonly OpenImMessageService _openImMessageService;
+        private readonly OpenImGroupService _openImGroupService;
         private readonly AccessViolationService _violationService;
         private readonly PendingDomainService _pendingDomainService;
         private readonly QueueService _queueService;
@@ -41,6 +42,7 @@ namespace SbAgentHub.Services
             OpenImUserService openImUserService,
             OpenImAuthService openImAuthService,
             OpenImMessageService openImMessageService,
+            OpenImGroupService openImGroupService,
             AccessViolationService violationService,
             PendingDomainService pendingDomainService,
             QueueService queueService,
@@ -57,6 +59,7 @@ namespace SbAgentHub.Services
             _openImUserService = openImUserService;
             _openImAuthService = openImAuthService;
             _openImMessageService = openImMessageService;
+            _openImGroupService = openImGroupService;
             _violationService = violationService;
             _pendingDomainService = pendingDomainService;
             _queueService = queueService;
@@ -241,22 +244,29 @@ namespace SbAgentHub.Services
                     .ExecuteAffrows();
             }
 
-            // 5. 记录登录
-            RecordLogin(chatUser, request);
-
-            // 6. 发送 session_init 确保 OpenIM 会话创建（必须 await，客户端依赖会话已存在）
-            if (allocation.Success && !string.IsNullOrEmpty(allocation.OpenImUserId))
+            // 5. 创建群组（统一群聊模式）
+            string groupId = chatUser.GroupId;
+            if (allocation.Success && !string.IsNullOrEmpty(allocation.OpenImUserId) && string.IsNullOrEmpty(groupId))
             {
-                var reason = isNewUser ? "login" : "reconnect";
-                await _openImMessageService.SendSessionInitMessageAsync(
-                    allocation.OpenImUserId, chatUser.ChatUserId, reason);
+                groupId = await CreateSessionGroupAsync(chatUser, allocation, platform);
             }
 
-            // 7. 新用户发送欢迎语（会话已创建，fire-and-forget 即可）
-            if (isNewUser && allocation.Success && !string.IsNullOrEmpty(allocation.WelcomeMessage))
+            // 6. 记录登录
+            RecordLogin(chatUser, request);
+
+            // 7. 发送 session_init 确保 OpenIM 会话创建（必须 await，客户端依赖会话已存在）
+            if (allocation.Success && !string.IsNullOrEmpty(allocation.OpenImUserId) && !string.IsNullOrEmpty(groupId))
             {
-                _ = _openImMessageService.SendWelcomeMessageAsync(
-                    allocation.OpenImUserId, chatUser.ChatUserId, allocation.WelcomeMessage);
+                var reason = isNewUser ? "login" : "reconnect";
+                await _openImMessageService.SendGroupSessionInitMessageAsync(
+                    allocation.OpenImUserId, groupId, reason);
+            }
+
+            // 8. 新用户发送欢迎语（会话已创建，fire-and-forget 即可）
+            if (isNewUser && allocation.Success && !string.IsNullOrEmpty(allocation.WelcomeMessage) && !string.IsNullOrEmpty(groupId))
+            {
+                _ = _openImMessageService.SendGroupTextMessageAsync(
+                    allocation.OpenImUserId, groupId, allocation.WelcomeMessage);
             }
 
             return ResultData.Ok(new VisitorAuthResponse
@@ -273,7 +283,8 @@ namespace SbAgentHub.Services
                 AgentOnline = allocation.AgentOnline,
                 OfflineMessage = !allocation.AgentOnline ? allocation.Message : null,
                 WelcomeMessage = allocation.WelcomeMessage,
-                PlatformName = platform.PlatformName
+                PlatformName = platform.PlatformName,
+                GroupId = groupId
             });
         }
 
@@ -333,7 +344,10 @@ namespace SbAgentHub.Services
                     IsOnline = authResponse.AgentOnline,
                     WelcomeMessage = authResponse.WelcomeMessage,
                     AutoSendWelcome = !string.IsNullOrEmpty(authResponse.WelcomeMessage),
-                    ConversationId = $"si_{authResponse.AgentImUserId}_{authResponse.ChatUserId}",
+                    ConversationId = !string.IsNullOrEmpty(authResponse.GroupId)
+                        ? $"sg_{authResponse.GroupId}"
+                        : $"si_{authResponse.AgentImUserId}_{authResponse.ChatUserId}",
+                    GroupId = authResponse.GroupId,
                 } : null,
                 Platform = new SdkPlatformInfo
                 {
@@ -584,7 +598,50 @@ namespace SbAgentHub.Services
                 EnableSatisfactionRating = _quotaService.CheckFeature(ownerId, "feature_satisfaction"),
                 EnableVisitorForm = _quotaService.CheckFeature(ownerId, "feature_visitor_form"),
                 EnableQueue = csConfig.EnableQueue,
+                EnableBroadcast = csConfig.EnableBroadcast,
             };
+        }
+
+        /// <summary>
+        /// 为会话创建 OpenIM 群组（统一群聊模式）
+        /// </summary>
+        private async Task<string> CreateSessionGroupAsync(ChatUser chatUser, AgentAllocationResult allocation, ChatPlatform platform)
+        {
+            var csConfig = _configService.GetEffectiveConfig(platform.OwnerId);
+
+            // 群成员：主客服（群主）+ 访客
+            var memberIds = new List<string> { chatUser.ChatUserId };
+
+            // 广播模式：追加该 owner 下所有在线客服
+            if (csConfig.EnableBroadcast)
+            {
+                var onlineAgents = _fsql.Select<Member>()
+                    .Where(m => (m.OwnerId == platform.OwnerId || m.Id == platform.OwnerId)
+                        && m.Status == UserStatus.Active
+                        && m.OnlineStatus != OnlineStatus.Offline
+                        && !string.IsNullOrEmpty(m.OpenImUserId)
+                        && m.Id != allocation.AgentId) // 主客服单独作为群主
+                    .ToList(m => m.OpenImUserId);
+
+                memberIds.AddRange(onlineAgents);
+            }
+
+            var groupName = $"客服会话_{chatUser.Nickname ?? "访客"}";
+            var groupId = await _openImGroupService.CreateGroupAsync(
+                groupName, allocation.OpenImUserId, memberIds);
+
+            if (!string.IsNullOrEmpty(groupId))
+            {
+                chatUser.GroupId = groupId;
+                _fsql.Update<ChatUser>().SetSource(chatUser)
+                    .UpdateColumns(c => c.GroupId)
+                    .ExecuteAffrows();
+
+                _logger.LogInformation("会话群组创建成功: ChatUserId={ChatUserId}, GroupId={GroupId}, Broadcast={Broadcast}, Members={Count}",
+                    chatUser.ChatUserId, groupId, csConfig.EnableBroadcast, memberIds.Count + 1);
+            }
+
+            return groupId;
         }
 
         /// <summary>

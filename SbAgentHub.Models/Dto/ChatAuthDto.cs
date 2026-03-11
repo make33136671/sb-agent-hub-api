@@ -46,6 +46,9 @@ namespace SbAgentHub.Models.Dto
         public string WelcomeMessage { get; set; }
         public string PlatformName { get; set; }
 
+        /// <summary>会话群组 ID</summary>
+        public string GroupId { get; set; }
+
         /// <summary>是否在排队中</summary>
         public bool IsQueued { get; set; }
         /// <summary>排队位置</summary>
@@ -148,6 +151,11 @@ namespace SbAgentHub.Models.Dto
         /// 预计算的 OpenIM 会话 ID，格式: si_{agentImUserId}_{chatUserId}
         /// </summary>
         public string ConversationId { get; set; }
+
+        /// <summary>
+        /// 会话群组 ID（统一群聊模式）
+        /// </summary>
+        public string GroupId { get; set; }
     }
 
     public class SdkPlatformInfo
@@ -168,6 +176,7 @@ namespace SbAgentHub.Models.Dto
         public bool EnableSatisfactionRating { get; set; } = false;
         public bool EnableVisitorForm { get; set; } = false;
         public bool EnableQueue { get; set; } = false;
+        public bool EnableBroadcast { get; set; } = false;
     }
 
     /// <summary>

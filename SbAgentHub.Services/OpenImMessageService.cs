@@ -236,5 +236,103 @@ namespace SbAgentHub.Services
             };
             return await SendSystemMessageAsync(fromUserId, toUserId, SystemMessageTypes.SessionInit, payload, "[会话已建立]");
         }
+
+        /// <summary>
+        /// 发送群聊文本消息（如欢迎语）
+        /// </summary>
+        public async Task<bool> SendGroupTextMessageAsync(string fromUserId, string groupId, string text)
+        {
+            if (string.IsNullOrEmpty(_apiUrl) || string.IsNullOrEmpty(text)) return false;
+
+            try
+            {
+                string adminToken = await _authService.GetAdminTokenAsync();
+
+                var request = new HttpRequestMessage(HttpMethod.Post, "/msg/send_msg");
+                request.Headers.Add("operationID", Guid.NewGuid().ToString());
+                request.Headers.Add("token", adminToken);
+                request.Content = JsonContent.Create(new
+                {
+                    sendID = fromUserId,
+                    groupID = groupId,
+                    contentType = 101, // Text
+                    sessionType = 3,   // Group chat
+                    content = new { text }
+                });
+
+                var response = await _httpClient.SendAsync(request);
+                var result = await response.Content.ReadFromJsonAsync<OpenImResponse<object>>();
+
+                if (result?.ErrCode == 0)
+                {
+                    _logger.LogInformation("OpenIM 群聊消息发送成功: {From} -> Group={GroupId}", fromUserId, groupId);
+                    return true;
+                }
+
+                _logger.LogWarning("OpenIM 群聊消息发送失败: {ErrCode} {ErrMsg}", result?.ErrCode, result?.ErrMsg);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "OpenIM 群聊消息发送异常: {From} -> Group={GroupId}", fromUserId, groupId);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 发送群聊 session_init 系统消息
+        /// </summary>
+        public async Task<bool> SendGroupSessionInitMessageAsync(string fromUserId, string groupId, string reason = "login")
+        {
+            if (string.IsNullOrEmpty(_apiUrl)) return false;
+
+            try
+            {
+                string adminToken = await _authService.GetAdminTokenAsync();
+
+                var extensionData = new { systemMessage = true, notDisplay = true };
+                var payload = new
+                {
+                    type = SystemMessageTypes.SessionInit,
+                    groupId,
+                    reason,
+                    timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+
+                var request = new HttpRequestMessage(HttpMethod.Post, "/msg/send_msg");
+                request.Headers.Add("operationID", Guid.NewGuid().ToString());
+                request.Headers.Add("token", adminToken);
+                request.Content = JsonContent.Create(new
+                {
+                    sendID = fromUserId,
+                    groupID = groupId,
+                    contentType = SystemMessageTypes.ContentType,
+                    sessionType = 3, // Group chat
+                    content = new
+                    {
+                        data = System.Text.Json.JsonSerializer.Serialize(payload),
+                        extension = System.Text.Json.JsonSerializer.Serialize(extensionData),
+                        description = "[会话已建立]"
+                    }
+                });
+
+                var response = await _httpClient.SendAsync(request);
+                var result = await response.Content.ReadFromJsonAsync<OpenImResponse<object>>();
+
+                if (result?.ErrCode == 0)
+                {
+                    _logger.LogInformation("OpenIM 群聊 session_init 发送成功: {From} -> Group={GroupId}", fromUserId, groupId);
+                    return true;
+                }
+
+                _logger.LogWarning("OpenIM 群聊 session_init 发送失败: {ErrCode} {ErrMsg}", result?.ErrCode, result?.ErrMsg);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "OpenIM 群聊 session_init 异常: {From} -> Group={GroupId}", fromUserId, groupId);
+                return false;
+            }
+        }
     }
 }
