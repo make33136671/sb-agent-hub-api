@@ -4,9 +4,11 @@
 
 本项目使用 OpenIM 作为即时通讯引擎，实现访客（ChatUser）与客服（Agent/Member）之间的实时聊天功能。系统分为三层集成：
 
-1. **后端 (agent-api)** — 通过 OpenIM Server REST API 管理用户注册、Token 获取、系统消息发送
+1. **后端 (agent-api)** — 通过 OpenIM Server REST API 管理用户注册、Token 获取、群组管理、系统消息发送
 2. **管理端 (agent-admin)** — 客服工作台通过 JS SDK (`@openim/client-sdk`) 建立 WebSocket 连接，实时收发消息
-3. **Widget 端 (agent-widget-vue)** — 访客通过 JS SDK 建立 WebSocket 连接，与客服聊天
+3. **Widget 端 (agent-widget-vue / agent-widget-js / agent-chat)** — 访客通过 JS SDK 建立 WebSocket 连接，与客服聊天
+
+> **v2 群聊模式**：所有会话统一使用 OpenIM 群聊（Group），每个访客会话对应一个群组。广播接待模式下，所有在线客服自动加入群组，实现消息广播。
 
 ## 架构图
 
@@ -29,6 +31,7 @@
           └─── agent-api (.NET 后端)
                ├── OpenImAuthService    (Token 管理)
                ├── OpenImUserService    (用户注册/更新)
+               ├── OpenImGroupService   (群组创建/成员管理)
                └── OpenImMessageService (系统消息发送)
 ```
 
@@ -49,6 +52,7 @@
 |----|------|------|
 | `SB_Member` | `OpenImUserId` | 客服的 OpenIM UserID |
 | `SB_ChatUser` | `ChatUserId` | 访客的 OpenIM UserID（即 `chat_xxx`）|
+| `SB_ChatUser` | `GroupId` | 会话群组 ID（统一群聊模式） |
 
 ## 后端集成 (agent-api)
 
@@ -58,6 +62,7 @@
 SbAgentHub.Services/
 ├── OpenImAuthService.cs      # Token 管理
 ├── OpenImUserService.cs      # 用户注册/更新/查询
+├── OpenImGroupService.cs     # 群组创建/成员管理
 ├── OpenImMessageService.cs   # 系统消息发送
 └── ChatAuthService.cs        # 聊天认证（组合以上服务）
 ```
@@ -97,15 +102,27 @@ SbAgentHub.Services/
 - `errCode == 0` → 成功
 - `errCode 11001-11099` → 用户已存在，视为成功
 
-### OpenImMessageService — 消息服务
+### OpenImGroupService — 群组管理
 
-**职责**：后端直接发送系统消息
+**职责**：创建和管理会话群组（统一群聊模式）
 
-- `SendTextMessageAsync(fromUserId, toUserId, text)` — 发送文本消息
-- `SendWelcomeMessageAsync(agentImUserId, chatUserImUserId, welcomeMessage)` — 发送欢迎语
+- `CreateGroupAsync(ownerUserId, memberUserIds, groupName)` — 创建群组
+- `InviteMembersAsync(groupId, userIds)` — 邀请成员加入群组
 
 **调用的 OpenIM API**：
-- `POST /msg/send_msg` — 发送消息
+- `POST /group/create_group` — 创建群组
+
+### OpenImMessageService — 消息服务
+
+**职责**：后端直接发送系统消息（支持单聊和群聊）
+
+- `SendTextMessageAsync(fromUserId, toUserId, text)` — 发送单聊文本消息
+- `SendGroupTextMessageAsync(fromUserId, groupId, text)` — 发送群聊文本消息
+- `SendSessionInitMessageAsync(fromUserId, toUserId, reason)` — 发送单聊 session_init
+- `SendGroupSessionInitMessageAsync(fromUserId, groupId, reason)` — 发送群聊 session_init
+
+**调用的 OpenIM API**：
+- `POST /msg/send_msg` — 发送消息（sessionType=1 单聊 / sessionType=3 群聊）
 
 **消息类型**：
 | contentType | 含义 |
@@ -113,31 +130,7 @@ SbAgentHub.Services/
 | 101 | 文本消息 |
 | 102 | 图片消息 |
 | 110 | 自定义消息 |
-
-### 排队功能开关
-
-排队功能由 `CustomerServiceConfig.EnableQueue` 控制，按站长（OwnerId）隔离配置。
-
-**配置字段**（`SB_CustomerServiceConfig` 表）：
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `EnableQueue` | bool | false | 是否启用排队功能 |
-| `MaxConcurrentSessions` | int | 50 | 最大并发会话数（启用排队时生效）|
-
-**后端行为**：
-
-- `EnableQueue = false`（默认）：`AgentAllocationService.AllocateAgent()` 跳过并发会话检查，访客直接分配客服
-- `EnableQueue = true`：检查当前在线访客数，超过 `MaxConcurrentSessions` 时返回 `NeedsQueue = true`，触发排队
-
-**前端行为**：
-
-认证响应中 `SdkFeatureFlags.EnableQueue` 下发排队开关状态：
-
-- `enableQueue = false`：客户端（agent-chat / agent-widget-js）忽略排队信息，直接进入聊天
-- `enableQueue = true` + `queue.isQueued = true`：显示排队 UI，轮询等待接入
-
-**管理后台**：`cs-config` 配置页面"排队设置"区域，支持开关切换和最大并发数设置。
+| 1501-1599 | 群组系统通知（OpenIM 内置，客户端需过滤） |
 
 ### ChatAuthService — 聊天认证流程
 
@@ -151,11 +144,20 @@ SbAgentHub.Services/
    └── 都未找到 → 新建用户（生成 chat_xxx ID）
 3. 在 OpenIM 注册用户 + 获取 Token
 4. 分配客服（AgentAllocationService）
-   └── EnableQueue=true 且并发超限 → 进入排队
-5. 记录登录日志
-6. 新用户 + 有客服 → 发送欢迎语
-7. 返回认证信息（IM Token、客服信息、平台信息、排队状态）
+5. 创建会话群组（统一群聊模式）
+   ├── 群主：分配到的客服
+   ├── 群成员：访客
+   ├── 广播模式：追加所有在线客服为群成员
+   └── GroupId 存入 ChatUser 表
+6. 记录登录日志
+7. 发送群聊 session_init（确保会话创建）
+8. 新用户 + 有客服 → 发送群聊欢迎语
+9. 返回认证信息（IM Token、客服信息、GroupId、平台信息）
 ```
+
+**会话 ID 格式变更**：
+- 群聊模式：`sg_{groupId}`（取代旧的 `si_{agentImUserId}_{chatUserId}`）
+- 单聊降级：`si_{agentImUserId}_{chatUserId}`（仅群组创建失败时）
 
 **Token 刷新** (`RefreshImTokenAsync`)：
 ```
@@ -242,6 +244,9 @@ IM 连接状态 (imConnected)        ─┘
 | `imUserId` | `ref<string \| null>` | 当前 IM 用户 ID |
 | `messages` | `ref<Message[]>` | 当前对话消息 |
 | `conversations` | `ref<Conversation[]>` | 会话列表 |
+| `previewMap` | `ref<Map<string, string>>` | 会话预览文本缓存（key 为 groupID 或 userID） |
+| `senderInfoMap` | `ref<Map<string, {...}>>` | 发送者信息缓存（nickname, faceURL） |
+| `systemUnreadOffset` | `ref<Map<string, number>>` | 系统消息未读偏移量 |
 
 | 方法 | 说明 |
 |------|------|
@@ -249,6 +254,34 @@ IM 连接状态 (imConnected)        ─┘
 | `logout()` | 断开连接，重置状态 |
 | `loadHistoryWithUser(userID, count)` | 加载与某用户的聊天记录 |
 | `sendText(recvID, text)` | 发送文本消息 |
+
+### 消息处理管道
+
+新消息统一经过 `classifyMessage` 分类后按管道处理：
+
+```
+收到消息 → classifyMessage(message)
+  → 1. Side Effects（消息副作用：message_read 标记已读、visitor_online/offline 状态回调）
+  → 2. 缓存发送者信息（fetchSenderInfos）
+  → 3. 系统消息不计入未读（systemUnreadOffset +1）
+  → 4. Storage（showInChat=true 的消息推入当前聊天窗口）
+  → 5. PreviewMap（showInListPreview=true 的消息更新会话列表预览）
+  → 6. Sound（系统通知音 / 新消息音）
+  → 7. Refresh conversation list
+```
+
+### 消息分类规则 (classifyMessage)
+
+| 类型 | showInChat | showInListPreview | previewText |
+|------|-----------|-------------------|-------------|
+| 普通文本 | true | true | 文本内容 |
+| 图片/语音/视频/文件 | true | true | [图片]/[语音]等 |
+| session_init | false | false | — |
+| message_read | false | false | — |
+| visitor_online | true | true | [客户已上线] |
+| visitor_offline | true | true | [客户已离线] |
+| user_info_updated | true | false | — |
+| 群通知 1501-1599 | false | false | — |
 
 ### 事件监听
 
@@ -301,11 +334,16 @@ core.on('conversation:changed')   → 更新 conversations
 ```
 Widget 打开
   → chatAuth.getImToken(platformKey, clientId, ...)
-  → 获得 { chatUserId, token, imConfig: { apiUrl, wsUrl }, agent, ... }
+  → 获得 { chatUserId, token, imConfig: { apiUrl, wsUrl }, agent: { groupId, ... }, ... }
   → core.updateImAddrs(imConfig.apiUrl, imConfig.wsUrl)  // 动态注入 IM 地址
   → core.login(chatUserId, token)
     → sdk.login({ userID, token, apiAddr, wsAddr, platformID })
-  → 连接成功，开始收发消息
+  → 连接成功
+  → 加载历史消息：
+    ├── 群聊模式（groupId 存在）：getOne(groupId, sessionType=3) → getHistory
+    └── 单聊降级：getOne(agentUserId) → getHistory
+  → 过滤群组系统通知（contentType 1501-1599）
+  → 开始收发消息（群聊模式下 recvID = groupId, isGroup = true）
 ```
 
 ### 事件监听
@@ -326,6 +364,8 @@ sdk.on(CbEvents.OnConversationChanged) → 会话变更
 
 **发送文本**：
 ```typescript
+// 群聊模式：recvID = groupId, isGroup = true
+// 单聊模式：recvID = agentUserId, isGroup = false
 sdk.createTextMessage(text)
   → sdk.sendMessage({ message, recvID, groupID })
 ```
@@ -455,6 +495,36 @@ createWidget('#chat-widget', {
 | 8 | Linux |
 | 9 | Admin |
 
+## 广播接待模式
+
+### 功能说明
+
+广播接待模式开启后，新访客发起会话时，系统会将所有在线客服（同 Owner 下）加入该会话群组，实现消息广播。所有客服均可看到并回复访客消息。
+
+### 配置
+
+- **数据库字段**：`SB_CustomerServiceConfig.EnableBroadcast`（bool，默认 false）
+- **前端管理**：客服配置页面（`cs-config/Index.vue`）增加广播模式开关
+- **FeatureFlags**：认证响应中 `featureFlags.enableBroadcast` 下发给客户端
+
+### 群组创建逻辑
+
+```
+访客认证 → 分配主客服 → CreateSessionGroupAsync()
+  ├── 群主：主客服（agentImUserId）
+  ├── 群成员：访客（chatUserId）
+  ├── EnableBroadcast = true 时：
+  │   └── 追加该 Owner 下所有在线客服为群成员
+  └── 返回 GroupId → 存入 ChatUser.GroupId
+```
+
+### 会话标识
+
+| 模式 | ConversationId 格式 | 说明 |
+|------|---------------------|------|
+| 群聊模式 | `sg_{groupId}` | 群会话标识 |
+| 单聊降级 | `si_{agentImUserId}_{chatUserId}` | 群组创建失败时降级 |
+
 ## 注意事项
 
 1. **IM 地址服务端下发**：客户端不再需要配置 `apiAddr`/`wsAddr`，由 `GetImToken` / `GetAgentImToken` 响应中的 `imConfig` 字段自动下发。SDK 通过 `core.updateImAddrs()` 在登录前动态注入
@@ -462,4 +532,5 @@ createWidget('#chat-widget', {
 3. **Token 有效期**：默认 1 小时，后端缓存 55 分钟，前端 5 分钟安全余量
 4. **TypeScript 限制**：项目启用 `erasableSyntaxOnly`，不能使用 `enum`，改用 `as const` 对象 + 类型联合
 5. **Fetch 拦截器**：全局安装，仅影响 OpenIM API 请求，不影响其他 HTTP 请求
-6. **系统消息过滤**：`isSystemMessage()` 在消息列表中过滤系统类消息，确保用户不可见
+6. **消息分类**：使用 `classifyMessage()` 统一分类，替代分散的 `isSystemMessage()` 判断
+7. **群组系统通知过滤**：客户端需过滤 contentType 1501-1599 的 OpenIM 群组内置通知，这些消息不应展示给用户
