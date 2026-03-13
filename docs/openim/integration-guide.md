@@ -525,6 +525,54 @@ createWidget('#chat-widget', {
 | 群聊模式 | `sg_{groupId}` | 群会话标识 |
 | 单聊降级 | `si_{agentImUserId}_{chatUserId}` | 群组创建失败时降级 |
 
+## SDK v3.8.3 缓存崩溃修复
+
+### 问题
+
+`@openim/client-sdk@3.8.3` 存在 bug：新用户（无历史会话）登录后 `get_active_conversations` 返回空数据，导致内部 `cachedHasReadAndMaxSeqs` 被设为 `undefined`。后续所有会话/消息操作访问该缓存时崩溃（errCode 10006）。
+
+**典型报错**：
+```
+TypeError: Cannot read properties of undefined (reading 'sg_xxx')
+    at getCachedMaxReadSeq
+    at triggerConversation
+    at handleGeneralWsResp
+```
+
+**触发场景**：广播接待模式下，新客服账号加入群组后收到 WS 消息，但 sync 尚未完成或返回空数据。
+
+### 修复方案（openim-core-js）
+
+`OpenIMClient.ts` 采用**双重防护**：
+
+```
+sdk.login() 完成
+  → ensureCacheGuard()
+    ├── 立即尝试安装（如果 messageTrigger.cache 可用）
+    └── 否则每 50ms 轮询重试，最多 3 秒
+  → tryInstallCacheGuard()
+    ├── 1) 属性守卫：Object.defineProperty 拦截 setter，阻止值被设为 undefined
+    └── 2) 方法 monkey-patch：替换 getCachedMaxReadSeq/addCachedMaxReadSeq/updateCachedMaxReadSeq
+         每次访问前确保 cachedHasReadAndMaxSeqs 存在
+  → OnSyncServerFinish / OnSyncServerFailed 事件中兜底再次调用
+```
+
+**关键路径**：`sdk.messageTrigger.cache` → `cachedHasReadAndMaxSeqs`
+
+### 依赖更新注意
+
+`openim-core-js` 通过 `file:` 协议被 `agent-admin` 引用。本地 build SDK 后，admin 的 `node_modules` **不会自动同步**，需手动执行：
+
+```bash
+cd agent-admin && pnpm update @saibotianlong/openim-core --filter web-antd
+```
+
+然后 `--force` 构建以跳过 turbo 缓存：
+
+```bash
+npx turbo run build --filter='@vben/web-antd' --force
+```
+
 ## 注意事项
 
 1. **IM 地址服务端下发**：客户端不再需要配置 `apiAddr`/`wsAddr`，由 `GetImToken` / `GetAgentImToken` 响应中的 `imConfig` 字段自动下发。SDK 通过 `core.updateImAddrs()` 在登录前动态注入
@@ -534,3 +582,4 @@ createWidget('#chat-widget', {
 5. **Fetch 拦截器**：全局安装，仅影响 OpenIM API 请求，不影响其他 HTTP 请求
 6. **消息分类**：使用 `classifyMessage()` 统一分类，替代分散的 `isSystemMessage()` 判断
 7. **群组系统通知过滤**：客户端需过滤 contentType 1501-1599 的 OpenIM 群组内置通知，这些消息不应展示给用户
+8. **file: 依赖同步**：`openim-core-js` 和 `agent-widget-vue` 本地 build 后，引用它们的项目需 `pnpm update` 重新安装，否则 node_modules 仍是旧版本
