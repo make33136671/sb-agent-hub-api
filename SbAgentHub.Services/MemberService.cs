@@ -95,6 +95,24 @@ namespace SbAgentHub.Services
             if (!string.IsNullOrEmpty(member.Password))
                 member.Password = PasswordUtil.EncryptPassword(member.Password);
 
+            // 客服角色：自动设置 OwnerId 为当前登录站长的 ID
+            if (member.Role == MemberRole.Agent && (member.OwnerId == null || member.OwnerId <= 0))
+            {
+                var user = _httpContextAccessor.HttpContext?.User;
+                string userType = user?.UserType() ?? "";
+                if (userType == "Member")
+                {
+                    string userRole = user!.Role();
+                    if (userRole == "Owner")
+                        member.OwnerId = user.Id();
+                    else if (userRole == "Agent")
+                    {
+                        var agent = Select.Where(c => c.Id == user.Id()).First();
+                        member.OwnerId = agent?.OwnerId;
+                    }
+                }
+            }
+
             member.CreatedTime = DateTime.Now;
             member = Insert(member);
 
