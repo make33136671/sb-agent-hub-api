@@ -37,6 +37,12 @@ namespace SbAgentHub.Models
         public string Name { get; set; }
 
         /// <summary>
+        /// 工号（可选）
+        /// </summary>
+        [Column(Name = "AgentNo", StringLength = 50, IsNullable = true)]
+        public string AgentNo { get; set; }
+
+        /// <summary>
         /// 角色: Owner(站长) / Agent(客服)
         /// </summary>
         [Column(Name = "Role", MapType = typeof(string))]

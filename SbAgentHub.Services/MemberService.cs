@@ -62,7 +62,7 @@ namespace SbAgentHub.Services
 
             var data = query.Count(out long dataCount).Page(page, pageSize).ToList(m => new
             {
-                m.Id, m.Username, m.Name, m.Avatar, m.Role, m.OwnerId,
+                m.Id, m.Username, m.Name, m.Avatar, m.AgentNo, m.Role, m.OwnerId,
                 m.OnlineStatus, m.MaxConcurrent, m.CurrentCount,
                 m.Status, m.CreatedTime, m.LastOnlineTime
             });
@@ -78,7 +78,7 @@ namespace SbAgentHub.Services
             var agents = Select.Where(c => c.OwnerId == ownerId && c.Role == MemberRole.Agent)
                 .ToList(c => new
                 {
-                    c.Id, c.Username, c.Name, c.Avatar,
+                    c.Id, c.Username, c.Name, c.Avatar, c.AgentNo,
                     c.OnlineStatus, c.MaxConcurrent, c.CurrentCount,
                     c.Status, c.CreatedTime, c.LastOnlineTime
                 });
@@ -133,6 +133,7 @@ namespace SbAgentHub.Services
 
             existing.Name = member.Name;
             existing.Avatar = member.Avatar;
+            existing.AgentNo = member.AgentNo;
             existing.Status = member.Status;
             existing.MaxConcurrent = member.MaxConcurrent;
             existing.WelcomeMessage = member.WelcomeMessage;
@@ -153,6 +154,30 @@ namespace SbAgentHub.Services
             member.Password = PasswordUtil.EncryptPassword(newPassword);
             UpdateDiy.UpdateColumns(c => c.Password).SetSource(member).ExecuteAffrows();
             return ResultData.Ok("密码已重置");
+        }
+
+        /// <summary>
+        /// 公开接口：通过站长Id和客服工号查询客服基本信息
+        /// </summary>
+        public ResultData GetAgentPublicInfo(int ownerId, string agentNo)
+        {
+            var agent = Select.Where(c =>
+                c.AgentNo == agentNo
+                && c.Status == UserStatus.Active
+                && c.OwnerId == ownerId
+                && c.Role == MemberRole.Agent)
+                .First();
+
+            if (agent == null)
+                return ResultData.No("客服不存在");
+
+            return ResultData.Ok(new
+            {
+                agent.AgentNo,
+                agent.Id,
+                agent.Name,
+                agent.Avatar
+            });
         }
 
         /// <summary>

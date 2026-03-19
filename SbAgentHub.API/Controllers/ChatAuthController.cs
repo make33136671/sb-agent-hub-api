@@ -17,14 +17,19 @@ public class ChatAuthController : Controller
     private readonly OpenImMessageService _messageService;
     private readonly QueueService _queueService;
     private readonly VisitorFormService _visitorFormService;
+    private readonly ChatPlatformService _platformService;
+    private readonly MemberService _memberService;
 
     public ChatAuthController(ChatAuthService service, OpenImMessageService messageService,
-        QueueService queueService, VisitorFormService visitorFormService)
+        QueueService queueService, VisitorFormService visitorFormService,
+        ChatPlatformService platformService, MemberService memberService)
     {
         _service = service;
         _messageService = messageService;
         _queueService = queueService;
         _visitorFormService = visitorFormService;
+        _platformService = platformService;
+        _memberService = memberService;
     }
 
     /// <summary>
@@ -183,6 +188,22 @@ public class ChatAuthController : Controller
             return ResultData.No("参数无效!");
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "";
         return _visitorFormService.SubmitForm(request.FormId, request.ChatUserId, request.FormData, ip);
+    }
+
+    /// <summary>
+    /// 通过网站Key和客服工号查询客服基本信息
+    /// </summary>
+    [HttpGet, AllowAnonymous]
+    public ResultData GetAgentInfo(string platformKey, string agentNo)
+    {
+        if (string.IsNullOrEmpty(platformKey) || string.IsNullOrEmpty(agentNo))
+            return ResultData.No("参数不完整");
+
+        var platform = _platformService.GetByPlatformKey(platformKey);
+        if (platform == null)
+            return ResultData.No("平台不存在或未启用");
+
+        return _memberService.GetAgentPublicInfo(platform.OwnerId, agentNo);
     }
 
     /// <summary>
