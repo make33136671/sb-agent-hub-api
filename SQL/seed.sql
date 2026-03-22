@@ -2,9 +2,9 @@
 -- 赛博客服系统 种子数据
 -- ========================================
 
--- 初始管理员（密码: admin123）
+-- 初始管理员（密码: 111111）
 INSERT INTO SB_Admin (ParentId, Username, Password, RoleId, Name, Status, CreatedTime, IsDeleted) VALUES
-(0, 'admin', '$2a$11$abc123hashedpassword', 1, '超级管理员', 0, NOW(), 0);
+(0, 'admin', '$2a$11$p7KGZYILT910BSkkevr2q.XqMsvMqFMPCFO1alVPq8TusYZv3KqlW', 1, '超级管理员', 0, NOW(), 0);
 
 -- 默认角色
 INSERT INTO SB_AdminRole (Name, RoleKey, IsDeleted) VALUES
