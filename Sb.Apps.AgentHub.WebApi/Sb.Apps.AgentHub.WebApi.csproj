@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <!-- 引 SB.Framework.WebApi 包后其 wwwroot 静态资产与本项目 wwwroot 冲突（开发清单生成失败），禁用之。
+         本项目静态文件仍由 UseStaticFiles 直接服务本地 wwwroot。 -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.MySql" Version="8.0.1" />
+    <PackageReference Include="FreeSql" Version="3.5.304" />
+    <PackageReference Include="FreeSql.Extensions.JsonMap" Version="3.5.109" />
+    <PackageReference Include="FreeSql.Provider.MySql" Version="3.5.109" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Serilog.Extensions.Logging.File" Version="3.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.0" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="installed.lock" CopyToOutputDirectory="Always" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sb.Apps.AgentHub.Services\Sb.Apps.AgentHub.Services.csproj" />
+    <ProjectReference Include="D:\projects\saibo\sb\sb-framework\SB.Framework.WebApi\SB.Framework.WebApi.csproj" />
+  </ItemGroup>
+
+</Project>

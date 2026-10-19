@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Expand\**" />
+    <EmbeddedResource Remove="Expand\**" />
+    <None Remove="Expand\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FreeSql.Repository" Version="3.5.304" />
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.3" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="StackExchange.Redis" Version="2.9.25" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="D:\projects\saibo\sb\sb-framework-chat\Sb.Framework.Chat.Realtime\Sb.Framework.Chat.Realtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sb.Apps.AgentHub.Core\Sb.Apps.AgentHub.Core.csproj" />
+    <ProjectReference Include="..\Sb.Apps.AgentHub.Models\Sb.Apps.AgentHub.Models.csproj" />
+  </ItemGroup>
+
+</Project>

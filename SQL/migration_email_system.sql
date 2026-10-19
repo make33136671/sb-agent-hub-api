@@ -1,0 +1,56 @@
+-- Migration: Create Email System Tables
+
+CREATE TABLE IF NOT EXISTS `sb_agenthub_email_config` (
+    `Id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `SmtpServer` VARCHAR(255) NULL,
+    `SmtpPort` INT NOT NULL DEFAULT 587,
+    `Username` VARCHAR(255) NULL,
+    `Password` VARCHAR(255) NULL,
+    `FromEmail` VARCHAR(255) NULL,
+    `FromName` VARCHAR(255) NULL,
+    `EnableSsl` TINYINT(1) NOT NULL DEFAULT 1,
+    `IsActive` TINYINT(1) NOT NULL DEFAULT 0,
+    `CreatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `UpdatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `sb_agenthub_email_template` (
+    `Id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `Code` VARCHAR(100) NULL,
+    `Name` VARCHAR(255) NULL,
+    `Subject` VARCHAR(500) NULL,
+    `Body` TEXT NULL,
+    `IsActive` TINYINT(1) NOT NULL DEFAULT 1,
+    `CreatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `UpdatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `sb_agenthub_email_verification_code` (
+    `Id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `Email` VARCHAR(255) NULL,
+    `Code` VARCHAR(10) NULL,
+    `Type` INT NOT NULL DEFAULT 0,
+    `VerifyCount` INT NOT NULL DEFAULT 0,
+    `IsUsed` TINYINT(1) NOT NULL DEFAULT 0,
+    `VerifiedAt` TIMESTAMP NULL,
+    `IpAddress` VARCHAR(50) NULL,
+    `ExpireAt` TIMESTAMP NOT NULL,
+    `CreatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `sb_agenthub_email_log` (
+    `Id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `TemplateId` INT NOT NULL DEFAULT 0,
+    `ToEmail` VARCHAR(255) NULL,
+    `Subject` VARCHAR(500) NULL,
+    `Body` TEXT NULL,
+    `Status` VARCHAR(50) NULL,
+    `ErrorMessage` TEXT NULL,
+    `Provider` VARCHAR(50) NULL,
+    `SentAt` TIMESTAMP NULL,
+    `CreatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Indexes
+CREATE INDEX `idx_email_code_email_type` ON `sb_agenthub_email_verification_code` (`Email`, `Type`);
+CREATE INDEX `idx_email_log_to` ON `sb_agenthub_email_log` (`ToEmail`);

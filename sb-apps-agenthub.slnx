@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="Sb.Apps.AgentHub.Models/Sb.Apps.AgentHub.Models.csproj" />
+  <Project Path="Sb.Apps.AgentHub.Core/Sb.Apps.AgentHub.Core.csproj" />
+  <Project Path="Sb.Apps.AgentHub.Services/Sb.Apps.AgentHub.Services.csproj" />
+  <Project Path="Sb.Apps.AgentHub.WebApi/Sb.Apps.AgentHub.WebApi.csproj" />
+  <Project Path="Sb.Apps.AgentHub.Tests.Integration/Sb.Apps.AgentHub.Tests.Integration.csproj" />
+</Solution>
