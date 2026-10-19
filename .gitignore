@@ -19,3 +19,10 @@ Thumbs.db
 
 # Setup
 installed.lock
+
+# Dependencies / build outputs
+node_modules/
+publish/
+
+# User-specific files
+*.user

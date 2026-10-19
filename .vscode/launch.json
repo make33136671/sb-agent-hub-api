@@ -2,13 +2,13 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "SbAgentHub API",
+            "name": "Sb.Apps.AgentHub API",
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}/SbAgentHub.API/bin/Debug/net8.0/SbAgentHub.API.dll",
+            "program": "${workspaceFolder}/Sb.Apps.AgentHub.WebApi/bin/Debug/net8.0/Sb.Apps.AgentHub.WebApi.dll",
             "args": [],
-            "cwd": "${workspaceFolder}/SbAgentHub.API",
+            "cwd": "${workspaceFolder}/Sb.Apps.AgentHub.WebApi",
             "stopAtEntry": false,
             "env": {
                 "ASPNETCORE_ENVIRONMENT": "Development"

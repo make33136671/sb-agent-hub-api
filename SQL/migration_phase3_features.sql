@@ -4,15 +4,15 @@
 -- ========================================
 -- 1. Enable Phase 3 feature-flag quota dimensions
 -- ========================================
-UPDATE SB_QuotaConfig SET IsEnabled = 1 WHERE QuotaKey = 'feature_visitor_form';
-UPDATE SB_QuotaConfig SET IsEnabled = 1 WHERE QuotaKey = 'feature_auto_reply';
-UPDATE SB_QuotaConfig SET IsEnabled = 1 WHERE QuotaKey = 'feature_satisfaction';
-UPDATE SB_QuotaConfig SET IsEnabled = 1 WHERE QuotaKey = 'feature_data_export';
+UPDATE sb_agenthub_quota_config SET IsEnabled = 1 WHERE QuotaKey = 'feature_visitor_form';
+UPDATE sb_agenthub_quota_config SET IsEnabled = 1 WHERE QuotaKey = 'feature_auto_reply';
+UPDATE sb_agenthub_quota_config SET IsEnabled = 1 WHERE QuotaKey = 'feature_satisfaction';
+UPDATE sb_agenthub_quota_config SET IsEnabled = 1 WHERE QuotaKey = 'feature_data_export';
 
 -- ========================================
 -- 2. 访客信息收集表单配置
 -- ========================================
-CREATE TABLE IF NOT EXISTS `SB_VisitorForm` (
+CREATE TABLE IF NOT EXISTS `sb_agenthub_visitor_form` (
   `Id` INT AUTO_INCREMENT PRIMARY KEY,
   `OwnerId` INT NOT NULL COMMENT '站长ID',
   `PlatformId` INT NOT NULL DEFAULT 0 COMMENT '平台ID(0=全局)',
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS `SB_VisitorForm` (
 -- ========================================
 -- 3. 访客表单提交记录
 -- ========================================
-CREATE TABLE IF NOT EXISTS `SB_VisitorFormSubmission` (
+CREATE TABLE IF NOT EXISTS `sb_agenthub_visitor_form_submission` (
   `Id` INT AUTO_INCREMENT PRIMARY KEY,
   `FormId` INT NOT NULL COMMENT '表单ID',
   `OwnerId` INT NOT NULL COMMENT '站长ID',
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS `SB_VisitorFormSubmission` (
 -- ========================================
 -- 4. 自动回复规则
 -- ========================================
-CREATE TABLE IF NOT EXISTS `SB_AutoReply` (
+CREATE TABLE IF NOT EXISTS `sb_agenthub_auto_reply` (
   `Id` INT AUTO_INCREMENT PRIMARY KEY,
   `OwnerId` INT NOT NULL COMMENT '站长ID',
   `PlatformId` INT NOT NULL DEFAULT 0 COMMENT '平台ID(0=全局)',
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS `SB_AutoReply` (
 -- ========================================
 -- 5. 满意度评价表
 -- ========================================
-CREATE TABLE IF NOT EXISTS `SB_SatisfactionRating` (
+CREATE TABLE IF NOT EXISTS `sb_agenthub_satisfaction_rating` (
   `Id` INT AUTO_INCREMENT PRIMARY KEY,
   `OwnerId` INT NOT NULL COMMENT '站长ID',
   `PlatformId` INT NOT NULL DEFAULT 0,
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS `SB_SatisfactionRating` (
 -- ========================================
 -- 6. 套餐模板表
 -- ========================================
-CREATE TABLE IF NOT EXISTS `SB_QuotaPackage` (
+CREATE TABLE IF NOT EXISTS `sb_agenthub_quota_package` (
   `Id` INT AUTO_INCREMENT PRIMARY KEY,
   `PackageName` VARCHAR(100) NOT NULL COMMENT '套餐名称',
   `PackageKey` VARCHAR(50) NOT NULL COMMENT '套餐标识',
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS `SB_QuotaPackage` (
 -- ========================================
 -- 7. 预设套餐数据
 -- ========================================
-INSERT IGNORE INTO `SB_QuotaPackage` (`PackageName`, `PackageKey`, `Description`, `Price`, `PricePeriod`, `QuotaSettings`, `SortOrder`) VALUES
+INSERT IGNORE INTO `sb_agenthub_quota_package` (`PackageName`, `PackageKey`, `Description`, `Price`, `PricePeriod`, `QuotaSettings`, `SortOrder`) VALUES
 ('基础版', 'basic', '适合个人站长或小型网站', 0, 'month',
  '{"max_platforms":1,"max_agents":3,"max_concurrent_sessions":10,"max_daily_visitors":100,"message_retention_days":30,"storage_quota_mb":100,"feature_visitor_form":0,"feature_auto_reply":0,"feature_satisfaction":0,"feature_data_export":0}',
  10),

@@ -3,11 +3,11 @@
 -- ========================================
 
 -- 初始管理员（密码: 111111）
-INSERT INTO SB_Admin (ParentId, Username, Password, RoleId, Name, Status, CreatedTime, IsDeleted) VALUES
+INSERT INTO sb_agenthub_admin (ParentId, Username, Password, RoleId, Name, Status, CreatedTime, IsDeleted) VALUES
 (0, 'admin', '$2a$11$p7KGZYILT910BSkkevr2q.XqMsvMqFMPCFO1alVPq8TusYZv3KqlW', 1, '超级管理员', 0, NOW(), 0);
 
 -- 默认角色
-INSERT INTO SB_AdminRole (Name, RoleKey, IsDeleted) VALUES
+INSERT INTO sb_agenthub_admin_role (Name, RoleKey, IsDeleted) VALUES
 ('超级管理员', 'super', 0),
 ('运营管理员', 'operator', 0);
 
@@ -17,7 +17,7 @@ INSERT INTO SB_AdminRole (Name, RoleKey, IsDeleted) VALUES
 -- ========================================
 
 -- 一级菜单（Layout 容器）
-INSERT INTO SB_Menu (ParentId, Name, Path, Component, Title, Icon, OrderNo, HideInMenu, IsDeleted) VALUES
+INSERT INTO sb_agenthub_menu (ParentId, Name, Path, Component, Title, Icon, OrderNo, HideInMenu, IsDeleted) VALUES
 -- Admin 菜单 (OrderNo 1-9)
 (0, 'Dashboard',    '/dashboard',   'BasicLayout', '仪表盘',     'lucide:layout-dashboard', 1, 0, 0),
 (0, 'MemberMgmt',   '/member-mgmt', 'BasicLayout', '会员管理',   'lucide:users',            2, 0, 0),
@@ -34,7 +34,7 @@ INSERT INTO SB_Menu (ParentId, Name, Path, Component, Title, Icon, OrderNo, Hide
 
 -- 二级菜单（Admin 页面）— ParentId 对应上面一级菜单的自增 Id
 -- 假设一级菜单 Id 为 1-10
-INSERT INTO SB_Menu (ParentId, Name, Path, Component, Title, Icon, OrderNo, HideInMenu, IsDeleted) VALUES
+INSERT INTO sb_agenthub_menu (ParentId, Name, Path, Component, Title, Icon, OrderNo, HideInMenu, IsDeleted) VALUES
 -- Dashboard 子菜单
 (1, 'DashboardIndex', '/dashboard/index', '/dashboard/workspace/index', '系统概览', '', 1, 0, 0),
 
@@ -57,7 +57,7 @@ INSERT INTO SB_Menu (ParentId, Name, Path, Component, Title, Icon, OrderNo, Hide
 (5, 'SystemSetting', '/system/setting', '/system-setting/List', '系统参数', '', 1, 0, 0);
 
 -- 二级菜单（Owner/Agent 页面）
-INSERT INTO SB_Menu (ParentId, Name, Path, Component, Title, Icon, OrderNo, HideInMenu, IsDeleted) VALUES
+INSERT INTO sb_agenthub_menu (ParentId, Name, Path, Component, Title, Icon, OrderNo, HideInMenu, IsDeleted) VALUES
 -- 客服工作台
 (6, 'WorkbenchIndex', '/workbench/index', '/workbench/Index', '工作台', '', 1, 0, 0),
 

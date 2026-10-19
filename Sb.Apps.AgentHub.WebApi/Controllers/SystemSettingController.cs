@@ -10,12 +10,16 @@ namespace Sb.Apps.AgentHub.WebApi.Controllers
     {
         private readonly ILogger<SystemSettingController> _logger;
         private readonly SystemSettingService _systemSettingService;
+        // 框架级系统设置（SB_SystemSetting 表），如云端备份开关
+        private readonly SB.Framework.Services.SystemSettingService _frameworkSystemSettingService;
 
         public SystemSettingController(ILogger<SystemSettingController> logger,
-            SystemSettingService systemSettingService)
+            SystemSettingService systemSettingService,
+            SB.Framework.Services.SystemSettingService frameworkSystemSettingService)
         {
             _logger = logger;
             _systemSettingService = systemSettingService;
+            _frameworkSystemSettingService = frameworkSystemSettingService;
         }
 
         /// <summary>
@@ -48,6 +52,21 @@ public ResultData List(string key = "", string field = "", string order = "", in
         /// </summary>
         [HttpGet(Name = "SystemSettingQuerySystemSetting")]
         public ResultData QuerySystemSetting(string key) => _systemSettingService.QuerySystemSetting(key);
+
+        /// <summary>
+        /// 按 Key 精确查询单个系统设置项（读取框架 SB_SystemSetting 表）
+        /// 用于前端读取云端备份上传开关（backup_upload_enabled）等框架级设置。
+        /// </summary>
+        [HttpGet]
+        public ResultData GetByKey(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return ResultData.No("key 不能为空");
+
+            var setting = _frameworkSystemSettingService.GetSystemSettingByKey(key.Trim());
+            if (setting == null) return ResultData.No("设置不存在");
+
+            return ResultData.Ok("查询成功", setting);
+        }
 
         /// <summary>
         /// 添加系统设置

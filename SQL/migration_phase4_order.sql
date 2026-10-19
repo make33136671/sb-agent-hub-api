@@ -4,7 +4,7 @@
 -- ========================================
 -- 1. 订单表
 -- ========================================
-CREATE TABLE IF NOT EXISTS `SB_Order` (
+CREATE TABLE IF NOT EXISTS `sb_agenthub_order` (
   `Id` INT AUTO_INCREMENT PRIMARY KEY,
   `OrderNo` VARCHAR(50) NOT NULL COMMENT '订单号',
   `MemberId` INT NOT NULL COMMENT '站长Id',

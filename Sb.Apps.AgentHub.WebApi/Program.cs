@@ -91,10 +91,43 @@ namespace Sb.Apps.AgentHub.WebApi
             // SB.Framework 中间件管道（全局异常/查询计数/静态文件/CORS/限流/鉴权/Swagger/SeedDatabase）
             app.UseSbFramework();
 
+            // 云端备份上传：框架默认关闭（SB_SystemSetting.backup_upload_enabled=false）。
+            // 客服系统未提供框架级系统设置界面，这里在框架建表/种子完成后统一开启。
+            EnsureBackupUploadEnabled(app);
+
+
             // Realtime 框架模块端点（SignalR Hub，默认 /hubs/realtime，配置节 Chat:Realtime）
             app.UseSbRealtime();
 
             app.Run();
+        }
+
+        /// <summary>
+        /// 开启框架系统设置 backup_upload_enabled（云端备份上传总开关）。
+        /// 必须在 app.UseSbFramework()（内部执行 SeedDatabase 播种框架设置）之后调用。
+        /// </summary>
+        private static void EnsureBackupUploadEnabled(WebApplication app)
+        {
+            using var scope = app.Services.CreateScope();
+            var fsql = scope.ServiceProvider.GetRequiredService<IFreeSql>();
+
+            var row = fsql.Select<SB.Framework.Models.SystemSetting>()
+                .Where(s => s.Key == "backup_upload_enabled").First();
+
+            if (row == null)
+            {
+                Log.Warning("未找到框架系统设置 backup_upload_enabled，跳过云端备份上传开关初始化");
+                return;
+            }
+
+            if (row.DataContent != "true")
+            {
+                fsql.Update<SB.Framework.Models.SystemSetting>()
+                    .Set(s => s.DataContent, "true")
+                    .Where(s => s.Key == "backup_upload_enabled")
+                    .ExecuteAffrows();
+                Log.Information("已开启云端备份上传（backup_upload_enabled = true）");
+            }
         }
 
         private static void EnsureQuotaSeedData(IFreeSql fsql)

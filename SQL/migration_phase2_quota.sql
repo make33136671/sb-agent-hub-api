@@ -4,17 +4,17 @@
 -- ========================================
 -- 1. Enable Phase 2 quota dimensions
 -- ========================================
-UPDATE SB_QuotaConfig SET IsEnabled = 1 WHERE QuotaKey = 'max_concurrent_sessions';
-UPDATE SB_QuotaConfig SET IsEnabled = 1 WHERE QuotaKey = 'max_daily_visitors';
-UPDATE SB_QuotaConfig SET IsEnabled = 1 WHERE QuotaKey = 'message_retention_days';
-UPDATE SB_QuotaConfig SET IsEnabled = 1 WHERE QuotaKey = 'storage_quota_mb';
+UPDATE sb_agenthub_quota_config SET IsEnabled = 1 WHERE QuotaKey = 'max_concurrent_sessions';
+UPDATE sb_agenthub_quota_config SET IsEnabled = 1 WHERE QuotaKey = 'max_daily_visitors';
+UPDATE sb_agenthub_quota_config SET IsEnabled = 1 WHERE QuotaKey = 'message_retention_days';
+UPDATE sb_agenthub_quota_config SET IsEnabled = 1 WHERE QuotaKey = 'storage_quota_mb';
 
 -- ========================================
 -- 2. Visitor queue table
 -- ========================================
-CREATE TABLE IF NOT EXISTS `SB_VisitorQueue` (
+CREATE TABLE IF NOT EXISTS `sb_agenthub_visitor_queue` (
   `Id` INT AUTO_INCREMENT PRIMARY KEY,
-  `ChatUserId` VARCHAR(64) NOT NULL COMMENT 'OpenIM 用户ID',
+  `ChatUserId` VARCHAR(64) NOT NULL COMMENT 'Realtime 用户ID',
   `PlatformId` INT NOT NULL COMMENT '平台ID',
   `OwnerId` INT NOT NULL COMMENT '站长ID',
   `QueuePosition` INT NOT NULL COMMENT '排队位置',
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS `SB_VisitorQueue` (
 -- ========================================
 -- 3. File upload record table (for storage tracking)
 -- ========================================
-CREATE TABLE IF NOT EXISTS `SB_FileRecord` (
+CREATE TABLE IF NOT EXISTS `sb_agenthub_file_record` (
   `Id` INT AUTO_INCREMENT PRIMARY KEY,
   `OwnerId` INT NOT NULL COMMENT '所属站长ID',
   `PlatformId` INT NOT NULL DEFAULT 0 COMMENT '所属平台ID',
